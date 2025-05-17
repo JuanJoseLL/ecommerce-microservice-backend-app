@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: favourite-service
-        image: micsvc-ws-aks.azurecr.io/favourite-service-ecommerce-boot:__BUILD_NUMBER__
+        image: micsvcwsacr.azurecr.io/favourite-service:PLACEHOLDER_TAG
         ports:
         - containerPort: 8800
         resources:

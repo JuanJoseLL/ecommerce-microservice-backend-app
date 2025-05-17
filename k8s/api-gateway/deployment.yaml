@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: micsvc-ws-aks.azurecr.io/api-gateway-ecommerce-boot:__BUILD_NUMBER__
+        image: micsvcwsacr.azurecr.io/api-gateway:PLACEHOLDER_TAG
         ports:
         - containerPort: 8080
         resources:

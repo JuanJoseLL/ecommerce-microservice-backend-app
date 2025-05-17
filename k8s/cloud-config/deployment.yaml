@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: cloud-config
-        image: micsvc-ws-aks.azurecr.io/cloud-config:__BUILD_NUMBER__
+        image: micsvcwsacr.azurecr.io/cloud-config:PLACEHOLDER_TAG
         ports:
         - containerPort: 9296
         resources:

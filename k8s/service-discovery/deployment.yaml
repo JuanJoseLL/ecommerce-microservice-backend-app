@@ -16,16 +16,21 @@ spec:
     spec:
       containers:
       - name: service-discovery
-        image: micsvc-ws-aks.azurecr.io/service-discovery:__BUILD_NUMBER__
+        image: micsvcwsacr.azurecr.io/service-discovery:PLACEHOLDER_TAG
         ports:
         - containerPort: 8761
         resources:
           limits:
             memory: "512Mi"
             cpu: "500m"
+        envFrom:
+        - configMapRef:
+            name: common-config
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
+        - name: SPRING_APPLICATION_NAME
+          value: "SERVICE-DISCOVERY"
         livenessProbe:
           httpGet:
             path: /actuator/health

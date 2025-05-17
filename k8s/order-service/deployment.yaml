@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: order-service
-        image: micsvc-ws-aks.azurecr.io/order-service-ecommerce-boot:__BUILD_NUMBER__
+        image: micsvcwsacr.azurecr.io/order-service:PLACEHOLDER_TAG
         ports:
         - containerPort: 8300
         resources:

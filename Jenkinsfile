@@ -7,7 +7,7 @@ pipeline {
         ACR_NAME             = 'micsvcwsacr'
         AKS_CLUSTER_NAME     = 'micsvc-ws-aks'
         AKS_RESOURCE_GROUP   = 'jenkins-get-started-rg'
-        K8S_TARGET_NAMESPACE = 'ecommerce-ns'
+        K8S_TARGET_NAMESPACE = 'ecommerce-app'
         K8S_MANIFESTS_ROOT   = 'k8s'
         DOCKERFILE_DIR_ROOT  = '.'
     }
@@ -78,15 +78,16 @@ pipeline {
             steps {
                 script {
                     def microservicesToDeploy = [
-                        [name: 'cloud-config-server', k8sDeploymentName: 'cloud-config-server'],
-                        [name: 'eureka-server',       k8sDeploymentName: 'eureka-server'],
+                        [name: 'cloud-config',        k8sDeploymentName: 'cloud-config'],
+                        [name: 'service-discovery',   k8sDeploymentName: 'service-discovery'],
+                        [name: 'api-gateway',         k8sDeploymentName: 'api-gateway',         hasIngress: true],
+                        [name: 'proxy-client',        k8sDeploymentName: 'proxy-client'],
                         [name: 'user-service',        k8sDeploymentName: 'user-service'],
                         [name: 'product-service',     k8sDeploymentName: 'product-service'],
                         [name: 'order-service',       k8sDeploymentName: 'order-service'],
                         [name: 'payment-service',     k8sDeploymentName: 'payment-service'],
                         [name: 'favourite-service',   k8sDeploymentName: 'favourite-service'],
                         [name: 'shipping-service',    k8sDeploymentName: 'shipping-service'],
-                        [name: 'api-gateway',         k8sDeploymentName: 'api-gateway',         hasIngress: true]
                     ]
 
                     microservicesToDeploy.each { msConfig ->

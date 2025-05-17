@@ -169,4 +169,11 @@ data:
     resilience4j.circuitbreaker.instances.userService.permitted-number-of-calls-in-half-open-state=3
     resilience4j.circuitbreaker.instances.userService.sliding-window-size=10
     resilience4j.circuitbreaker.instances.userService.wait-duration-in-open-state=5s
-    resilience4j.circuitbreaker.instances.userService.sliding-window-type=COUNT_BASED 
+    resilience4j.circuitbreaker.instances.userService.sliding-window-type=COUNT_BASED
+    
+  # Configuración específica para Service Discovery
+  service-discovery.properties: |
+    server.port=8761
+    eureka.client.register-with-eureka=false
+    eureka.client.fetch-registry=false
+    eureka.server.wait-time-in-ms-when-sync-empty=0 

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: micsvc-ws-aks.azurecr.io/user-service:__BUILD_NUMBER__ # VERIFY: Asegúrate que el nombre y tag de la imagen sean correctos
+          image: micsvcwsacr.azurecr.io/user-service:PLACEHOLDER_TAG # VERIFY: Asegúrate que el nombre y tag de la imagen sean correctos
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8700
