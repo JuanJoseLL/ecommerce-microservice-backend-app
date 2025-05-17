@@ -49,7 +49,7 @@ spec:
         - name: EUREKA_SERVER_WAIT_TIME_IN_MS_WHEN_SYNC_EMPTY
           value: "0"
         - name: SPRING_ZIPKIN_BASE_URL
-          value: "http://zipkin-service:9411/"
+          value: "http://zipkin-service:9411"
         - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
           value: "*"
         - name: MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED
@@ -60,11 +60,13 @@ spec:
           httpGet:
             path: /actuator/health
             port: 8761
-          initialDelaySeconds: 90
+          initialDelaySeconds: 180
           periodSeconds: 10
+          timeoutSeconds: 3
         readinessProbe:
           httpGet:
             path: /actuator/health
             port: 8761
-          initialDelaySeconds: 60
-          periodSeconds: 5 
+          initialDelaySeconds: 150
+          periodSeconds: 10
+          timeoutSeconds: 3 
