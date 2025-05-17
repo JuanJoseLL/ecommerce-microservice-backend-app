@@ -34,6 +34,28 @@ spec:
           value: "kubernetes"
         - name: SPRING_APPLICATION_NAME
           value: "SERVICE-DISCOVERY"
+        - name: SERVER_PORT
+          value: "8761"
+        - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+          value: "false"
+        - name: EUREKA_CLIENT_FETCH_REGISTRY
+          value: "false"
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: "http://service-discovery:8761/eureka/"
+        - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+          value: "true"
+        - name: EUREKA_INSTANCE_HOSTNAME
+          value: "service-discovery"
+        - name: EUREKA_SERVER_WAIT_TIME_IN_MS_WHEN_SYNC_EMPTY
+          value: "0"
+        - name: SPRING_ZIPKIN_BASE_URL
+          value: "http://zipkin-service:9411/"
+        - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          value: "*"
+        - name: MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED
+          value: "true"
+        - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+          value: "always"
         livenessProbe:
           httpGet:
             path: /actuator/health
