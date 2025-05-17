@@ -54,8 +54,8 @@ pipeline {
         stage('Apply Common Kubernetes Manifests') {
             steps {
                 script {
-                    def namespaceFile = "${env.K8S_MANIFESTS_ROOT}/namespace.yml"
-                    def commonConfigFile = "${env.K8S_MANIFESTS_ROOT}/common-config.yml"
+                    def namespaceFile = "${env.K8S_MANIFESTS_ROOT}/namespace.yaml"
+                    def commonConfigFile = "${env.K8S_MANIFESTS_ROOT}/common-config.yaml"
 
                     if (fileExists(namespaceFile)) {
                         echo "Aplicando Namespace: ${namespaceFile}"
@@ -106,13 +106,14 @@ pipeline {
                             def imageNameBase = msConfig.imageNameOnACR ?: msName
                             def imageNameInACR = "${env.ACR_NAME}.azurecr.io/${imageNameBase}"
                             def fullImageNameWithTag = "${imageNameInACR}:${imageTag}"
+                            def dockerFileContextPath = "${env.DOCKERFILE_DIR_ROOT}/${msName}"
 
-                            echo "Construyendo imagen Docker ${fullImageNameWithTag} desde el contexto ${dockerfileContextPath}"
-                            dir(dockerfileContextPath) {
+                            echo "Construyendo imagen Docker ${fullImageNameWithTag} desde el contexto ${dockerFileContextPath}"
+                            dir(dockerFileContextPath) {
                                 docker.build(fullImageNameWithTag, ".")
                             }
                             echo "Pusheando imagen ${fullImageNameWithTag} a ${env.ACR_NAME}"
-                            docker.push(fullImageNameWithTag)
+                            docker.image(fullImageNameWithTag).push()
                         }
 
                         stage("Kubernetes Deploy: ${msName}") {
