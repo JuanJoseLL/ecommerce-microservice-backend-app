@@ -3,7 +3,7 @@ pipeline {
     agent any
 
     environment {
-        AZURE_CREDENTIALS_ID = 'azure-sp-for-pipeline'     // <<< ¡ASEGÚRATE DE USAR EL ID CORRECTO DE TU CREDENCIAL "Azure Service Principal"!
+        AZURE_CREDENTIALS_ID = 'AZURE_CREDENTIALS_ID'     // <<< ¡ASEGÚRATE DE USAR EL ID CORRECTO DE TU CREDENCIAL "Azure Service Principal"!
         ACR_NAME             = 'micsvcwsacr'
         AKS_CLUSTER_NAME     = 'micsvc-ws-aks'
         AKS_RESOURCE_GROUP   = 'jenkins-get-started-rg'
