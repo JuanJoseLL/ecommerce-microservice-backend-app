@@ -28,14 +28,14 @@ spec:
             cpu: "80m"
         readinessProbe:
           httpGet:
-            path: /zipkin/health # Standard health endpoint for Zipkin
+            path: /health # Correct health endpoint for Zipkin
             port: 9411
           initialDelaySeconds: 30
           periodSeconds: 15
           timeoutSeconds: 5
         livenessProbe:
           httpGet:
-            path: /zipkin/health # Standard health endpoint for Zipkin
+            path: /health # Correct health endpoint for Zipkin
             port: 9411
           initialDelaySeconds: 60
           periodSeconds: 30
