@@ -1,12 +1,31 @@
+server:
+  port: 8761
 
 spring:
   zipkin:
     base-url: ${SPRING_ZIPKIN_BASE_URL:http://localhost:9411/}
+    enabled: ${SPRING_ZIPKIN_ENABLED:false}
   application:
     name: SERVICE-DISCOVERY
   profiles:
     active:
-    - dev
+    - ${SPRING_PROFILES_ACTIVE:dev}
+  cloud:
+    config:
+      enabled: false
+      fail-fast: false
+
+eureka:
+  instance:
+    hostname: service-discovery
+    prefer-ip-address: true
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+    service-url:
+      defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+  server:
+    wait-time-in-ms-when-sync-empty: 0
 
 resilience4j:
   circuitbreaker:
@@ -29,6 +48,10 @@ management:
   endpoint:
     health:
       show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: "*"
 
 
 

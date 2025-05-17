@@ -7,7 +7,7 @@ data:
   # Configuración común para todos los microservicios
   common-services.properties: |
     # URLs de servicios
-    spring.zipkin.base-url=http://zipkin:9411/
+    spring.zipkin.base-url=http://zipkin-service:9411/
     spring.config.import=optional:configserver:http://cloud-config:9296
     eureka.client.serviceUrl.defaultZone=http://service-discovery:8761/eureka/
     eureka.client.register-with-eureka=true
