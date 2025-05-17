@@ -27,12 +27,19 @@ spec:
             memory: "256Mi"
             cpu: "50m"
         env:
+        - name: SPRING_CONFIG_IMPORT
+          valueFrom:
+            configMapKeyRef:
+              name: common-config
+              key: infrastructure-services.properties
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
+        - name: SPRING_APPLICATION_NAME
+          value: "CLOUD-CONFIG"
+        - name: SERVER_PORT
+          value: "9296"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin-service:9411/"
-        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
-          value: "http://service-discovery:8761/eureka/"
         - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
           value: "false"
         - name: EUREKA_CLIENT_FETCH_REGISTRY
