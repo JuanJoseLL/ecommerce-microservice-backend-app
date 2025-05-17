@@ -22,7 +22,10 @@ spec:
         resources:
           limits:
             memory: "512Mi"
-            cpu: "500m"
+            cpu: "80m"
+          requests:
+            memory: "512Mi"
+            cpu: "50m"
         env:
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"

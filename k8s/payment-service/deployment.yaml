@@ -21,6 +21,13 @@ spec:
           imagePullPolicy: IfNotPresent # O Always si la imagen se actualiza frecuentemente en el registry
           ports:
             - containerPort: 8400
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "150m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: "dev" # O "prod" u otro perfil según el entorno

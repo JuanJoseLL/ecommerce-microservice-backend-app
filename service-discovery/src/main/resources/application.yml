@@ -1,13 +1,46 @@
+server:
+  port: ${SERVER_PORT:8761} # Prioritize env var from common-config, fallback to 8761
 
 spring:
-  zipkin:
-    base-url: ${SPRING_ZIPKIN_BASE_URL:http://localhost:9411/}
   application:
-    name: SERVICE-DISCOVERY
-  profiles:
-    active:
-    - dev
+    name: ${SPRING_APPLICATION_NAME:SERVICE-DISCOVERY} # Prioritize env var from deployment
+  zipkin:
+    base-url: ${SPRING_ZIPKIN_BASE_URL:http://zipkin-service:9411/} # Prioritize env var from common-config
+  # profiles:
+    # active: dev # It's generally better to control the active profile via the SPRING_PROFILES_ACTIVE env var in Kubernetes
 
+eureka:
+  client:
+    register-with-eureka: ${EUREKA_CLIENT_REGISTER_WITH_EUREKA:false} # For standalone server
+    fetch-registry: ${EUREKA_CLIENT_FETCH_REGISTRY:false}         # For standalone server
+    service-url:
+      # This should resolve to http://service-discovery:8761/eureka/ via common-config
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://service-discovery:8761/eureka/}
+  instance:
+    prefer-ip-address: ${EUREKA_INSTANCE_PREFER_IP_ADDRESS:true}
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:service-discovery} # Can be set via env var or defaults to service-discovery
+    # appname: ${spring.application.name} # Usually inherited from spring.application.name
+  server:
+    # These settings ensure the server doesn't wait for non-existent replicas to sync when starting up alone.
+    wait-time-in-ms-when-sync-empty: ${EUREKA_SERVER_WAIT_TIME_IN_MS_WHEN_SYNC_EMPTY:0}
+    # enable-self-preservation: ${EUREKA_SERVER_ENABLE_SELF_PRESERVATION:false} # Consider true for production with multiple Eureka nodes
+    # renewal-percent-threshold: 0.85 # Default, adjust if needed for self-preservation
+    # Add other eureka.server. properties here if needed, and provide corresponding env vars from common-config
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*" # Should come from common-config via env var MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+  health:
+    circuitbreakers:
+      enabled: true # Should come from common-config via env var MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED
+  endpoint:
+    health:
+      show-details: always # Should come from common-config via env var MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+
+# Resilience4j config can stay if you intend service-discovery to have its own circuit breakers for some reason
+# Typically, a Eureka server itself doesn't initiate many outbound calls that would need complex circuit breaking.
 resilience4j:
   circuitbreaker:
     instances:
@@ -21,14 +54,6 @@ resilience4j:
         sliding-window-size: 10
         wait-duration-in-open-state: 5s
         sliding-window-type: COUNT_BASED
-
-management:
-  health:
-    circuitbreakers:
-      enabled: true
-  endpoint:
-    health:
-      show-details: always
 
 
 
