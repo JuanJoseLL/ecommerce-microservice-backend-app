@@ -77,11 +77,6 @@ pipeline {
         stage('Deploy Core Infrastructure Services') {
             steps {
                 script {
-                    echo "Deploying Service Discovery (Eureka)..."
-                    // Deploy service-discovery (build from source)
-                    def sdConfig = [name: 'service-discovery', k8sDeploymentName: 'service-discovery']
-                    deployMicroservice(sdConfig, params.BUILD_TAG, true) // true for buildFromSource
-
                     echo "Deploying Zipkin..."
                     // Deploy Zipkin (pre-built image)
                     def zipkinDeploymentFile = "${env.K8S_MANIFESTS_ROOT}/zipkin/deployment.yaml"
@@ -99,6 +94,11 @@ pipeline {
                     } else {
                         echo "ADVERTENCIA: Archivo de Deployment ${zipkinDeploymentFile} no encontrado para Zipkin."
                     }
+
+                    echo "Deploying Service Discovery (Eureka)..."
+                    // Deploy service-discovery (build from source)
+                    def sdConfig = [name: 'service-discovery', k8sDeploymentName: 'service-discovery']
+                    deployMicroservice(sdConfig, params.BUILD_TAG, true) // true for buildFromSource
                 }
             }
         }
