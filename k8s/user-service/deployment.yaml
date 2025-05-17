@@ -27,7 +27,7 @@ spec:
               cpu: "80m"
             limits:
               memory: "256Mi"
-              cpu: "100m"
+              cpu: "250m"
           env:
             - name: SPRING_PROFILES_ACTIVE
               value: "dev"
