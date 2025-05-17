@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: ecommerce-app
+  labels:
+    app: payment-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+        - name: payment-service
+          image: micsvc-ws-aks.azurecr.io/payment-service:__BUILD_NUMBER__ # Asegúrate que el nombre y tag de la imagen sean correctos
+          imagePullPolicy: IfNotPresent # O Always si la imagen se actualiza frecuentemente en el registry
+          ports:
+            - containerPort: 8400
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev" # O "prod" u otro perfil según el entorno
+            # Montar propiedades comunes
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:/etc/config/common-services.properties,file:/etc/config/payment-service.properties"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+          # Opcional: Liveness and Readiness Probes
+          livenessProbe:
+            httpGet:
+              path: /payment-service/actuator/health/liveness
+              port: 8400
+            initialDelaySeconds: 60 # Tiempo para que el servicio inicie completamente
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /payment-service/actuator/health/readiness
+              port: 8400
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config-volume
+          configMap:
+            name: common-config # Referencia al ConfigMap creado
+            items:
+              - key: "common-services.properties"
+                path: "common-services.properties"
+              - key: "payment-service.properties"
+                path: "payment-service.properties" 

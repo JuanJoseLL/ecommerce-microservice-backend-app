@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+  labels:
+    app: order-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+      - name: order-service
+        image: micsvc-ws-aks.azurecr.io/order-service-ecommerce-boot:__BUILD_NUMBER__
+        ports:
+        - containerPort: 8300
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "dev"
+        - name: SPRING_ZIPKIN_BASE_URL
+          value: "http://zipkin:9411/"
+        - name: SPRING_CONFIG_IMPORT
+          value: "optional:configserver:http://cloud-config:9296"
+        - name: EUREKA_SERVER_URL
+          value: "http://service-discovery:8761/eureka/"
+        - name: SPRING_APPLICATION_NAME
+          value: "ORDER-SERVICE"
+        - name: SERVER_PORT
+          value: "8300"
+        - name: SERVER_SERVLET_CONTEXT_PATH
+          value: "/order-service"
+        livenessProbe:
+          httpGet:
+            path: /order-service/actuator/health
+            port: 8300
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /order-service/actuator/health
+            port: 8300
+          initialDelaySeconds: 60
+          periodSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: common-config-volume
+          mountPath: /app/config
+      volumes:
+      - name: common-config-volume
+        configMap:
+          name: common-config 

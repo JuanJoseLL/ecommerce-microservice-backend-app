@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipping-service
+  namespace: ecommerce-app
+  labels:
+    app: shipping-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shipping-service
+  template:
+    metadata:
+      labels:
+        app: shipping-service
+    spec:
+      containers:
+        - name: shipping-service
+          image: micsvc-ws-aks.azurecr.io/shipping-service:__BUILD_NUMBER__ # VERIFY: Asegúrate que el nombre y tag de la imagen sean correctos
+          imagePullPolicy: IfNotPresent 
+          ports:
+            - containerPort: 8600
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev" 
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:/etc/config/common-services.properties,file:/etc/config/shipping-service.properties"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+          livenessProbe:
+            httpGet:
+              path: /shipping-service/actuator/health/liveness 
+              port: 8600
+            initialDelaySeconds: 60 
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /shipping-service/actuator/health/readiness 
+              port: 8600
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config-volume
+          configMap:
+            name: common-config 
+            items:
+              - key: "common-services.properties"
+                path: "common-services.properties"
+              - key: "shipping-service.properties"
+                path: "shipping-service.properties" 

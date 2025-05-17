@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: ecommerce-app
+  labels:
+    app: product-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+        - name: product-service
+          image: micsvc-ws-aks.azurecr.io/product-service:__BUILD_NUMBER__ # Asegúrate que el nombre y tag de la imagen sean correctos
+          imagePullPolicy: IfNotPresent # O Always si la imagen se actualiza frecuentemente en el registry
+          ports:
+            - containerPort: 8500
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev" # O "prod" u otro perfil según el entorno
+            # Montar propiedades comunes y específicas del servicio
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: "file:/etc/config/common-services.properties,file:/etc/config/product-service.properties"
+          volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+          # Opcional: Liveness and Readiness Probes
+          livenessProbe:
+            httpGet:
+              path: /product-service/actuator/health/liveness # Ajusta la ruta según tu configuración de actuator
+              port: 8500
+            initialDelaySeconds: 60 # Tiempo para que el servicio inicie completamente
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /product-service/actuator/health/readiness # Ajusta la ruta según tu configuración de actuator
+              port: 8500
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config-volume
+          configMap:
+            name: common-config # Referencia al ConfigMap creado
+            items:
+              - key: "common-services.properties"
+                path: "common-services.properties"
+              - key: "product-service.properties"
+                path: "product-service.properties" 

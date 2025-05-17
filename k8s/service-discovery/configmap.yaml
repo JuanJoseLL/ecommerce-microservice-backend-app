@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-discovery-cm
+data:
+  application.yml: |
+    server:
+      port: 8761
+    
+    spring:
+      zipkin:
+        base-url: ${SPRING_ZIPKIN_BASE_URL:http://zipkin-service:9411/}
+      application:
+        name: SERVICE-DISCOVERY
+    
+    eureka:
+      client:
+        register-with-eureka: false
+        fetch-registry: false
+        serviceUrl:
+          defaultZone: http://service-discovery:8761/eureka/
+      server:
+        wait-time-in-ms-when-sync-empty: 0
+    
+    management:
+      endpoints:
+        web:
+          exposure:
+            include: "*"
+      endpoint:
+        health:
+          show-details: always 
