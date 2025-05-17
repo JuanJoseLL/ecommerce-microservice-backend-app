@@ -12,8 +12,8 @@ spring:
 eureka:
   client:
     enabled: false # Explicitly disable client behavior for Eureka server
-    register-with-eureka: ${EUREKA_CLIENT_REGISTER_WITH_EUREKA:false} # For standalone server
-    fetch-registry: ${EUREKA_CLIENT_FETCH_REGISTRY:false}         # For standalone server
+    register-with-eureka: false # Explicitly false for standalone server
+    fetch-registry: false         # Explicitly false for standalone server
     service-url:
       # This should resolve to http://service-discovery:8761/eureka/ via common-config
       defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://service-discovery:8761/eureka/}
