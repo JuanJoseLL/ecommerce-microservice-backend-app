@@ -21,10 +21,10 @@ spec:
         - containerPort: 9296
         resources:
           limits:
-            memory: "512Mi"
+            memory: "256Mi"
             cpu: "80m"
           requests:
-            memory: "512Mi"
+            memory: "256Mi"
             cpu: "50m"
         env:
         - name: SPRING_PROFILES_ACTIVE

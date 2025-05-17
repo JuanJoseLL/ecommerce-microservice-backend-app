@@ -21,11 +21,11 @@ spec:
         - containerPort: 8761
         resources:
           limits:
-            memory: "512Mi"
-            cpu: "500m"
+            memory: "256Mi"
+            cpu: "100m"
           requests:
-            memory: "512Mi"
-            cpu: "250m"
+            memory: "128Mi"
+            cpu: "80m"
         envFrom:
         - configMapRef:
             name: common-config
