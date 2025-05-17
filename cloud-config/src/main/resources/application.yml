@@ -15,7 +15,7 @@ spring:
           clone-on-start: true
           force-pull: true
           timeout: 15
-          default-label: main
+          default-label: master
     service-registry:
       auto-registration:
         enabled: false
