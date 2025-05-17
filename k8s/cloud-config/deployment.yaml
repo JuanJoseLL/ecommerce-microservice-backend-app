@@ -27,11 +27,6 @@ spec:
             memory: "256Mi"
             cpu: "50m"
         env:
-        - name: SPRING_CONFIG_IMPORT
-          valueFrom:
-            configMapKeyRef:
-              name: common-config
-              key: infrastructure-services.properties
         - name: SPRING_PROFILES_ACTIVE
           value: "kubernetes"
         - name: SPRING_APPLICATION_NAME
@@ -40,12 +35,24 @@ spec:
           value: "9296"
         - name: SPRING_ZIPKIN_BASE_URL
           value: "http://zipkin-service:9411/"
+        - name: SPRING_ZIPKIN_ENABLED
+          value: "false"
+        - name: SPRING_CLOUD_CONFIG_ENABLED
+          value: "true"
+        - name: SPRING_CONFIG_IMPORT
+          value: "optional:file:/"
         - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
           value: "false"
         - name: EUREKA_CLIENT_FETCH_REGISTRY
           value: "false"
         - name: SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START
           value: "true"
+        - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+          value: "*"
+        - name: MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED
+          value: "true"
+        - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+          value: "always"
         livenessProbe:
           httpGet:
             path: /actuator/health
@@ -59,4 +66,4 @@ spec:
             port: 9296
           initialDelaySeconds: 90
           periodSeconds: 10
-          timeoutSeconds: 5 
+          timeoutSeconds: 5
