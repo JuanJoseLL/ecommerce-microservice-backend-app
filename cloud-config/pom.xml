@@ -61,7 +61,7 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 		</plugins>
-		<finalName>${project.artifactId}-v${project.version}</finalName>
+		<finalName>cloud-config</finalName>
 	</build>
 	
 </project>

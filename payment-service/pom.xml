@@ -109,7 +109,7 @@
 				</configuration>
 			</plugin>
 		</plugins>
-		<finalName>${project.artifactId}-v${project.version}</finalName>
+		<finalName>payment-service</finalName>
 	</build>
 	
 </project>

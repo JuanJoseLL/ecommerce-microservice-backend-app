@@ -108,7 +108,7 @@
 				</configuration>
 			</plugin>
 		</plugins>
-		<finalName>${project.artifactId}-v${project.version}</finalName>
+		<finalName>proxy-client</finalName>
 	</build>
 	
 </project>
