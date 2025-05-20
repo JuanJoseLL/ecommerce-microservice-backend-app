@@ -38,7 +38,7 @@ data:
   infrastructure-services.properties: |
     # Configuración para service-discovery y cloud-config
     spring.zipkin.base-url=http://zipkin-service:9411/
-    spring.zipkin.enabled=false
+    spring.zipkin.enabled=true
     spring.cloud.config.enabled=false
     # No usar config server en servicios de infraestructura
     spring.config.import=optional:file:/etc/config/

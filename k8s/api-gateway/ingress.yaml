@@ -2,13 +2,13 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-gateway-ingress
+  namespace: ecommerce-app
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    kubernetes.io/ingress.class: "nginx"
+    #nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
   rules:
-  - host: ecommerce.local  # Puedes cambiar esto según tu dominio
-    http:
+  - http:
       paths:
       - path: /
         pathType: Prefix

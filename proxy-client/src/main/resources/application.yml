@@ -1,4 +1,3 @@
-
 server:
   servlet:
     context-path: /app
@@ -29,6 +28,10 @@ resilience4j:
         sliding-window-type: COUNT_BASED
 
 management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
   health:
     circuitbreakers:
       enabled: true

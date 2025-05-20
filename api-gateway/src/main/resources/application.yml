@@ -1,4 +1,3 @@
-
 server:
   servlet:
     context-path: /
@@ -61,6 +60,18 @@ spring:
         uri: lb://PROXY-CLIENT
         predicates:
         - Path=/app/**
+      - id: ZIPKIN-SERVICE
+        uri: http://zipkin-service:9411
+        predicates:
+        - Path=/zipkin/**
+        filters:
+        - StripPrefix=1
+      - id: EUREKA-SERVICE
+        uri: http://service-discovery:8761
+        predicates:
+        - Path=/eureka/**
+        filters:
+        - StripPrefix=1
 
 resilience4j:
   circuitbreaker:
