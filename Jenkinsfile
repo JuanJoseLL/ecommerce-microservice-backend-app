@@ -1,40 +1,29 @@
-// Jenkins Pipeline para E-commerce Microservices
-// Incluye construcción, pruebas (unitarias, integración, E2E) y despliegue en Kubernetes
 pipeline {
     agent any
 
-    // TRIGGERS AUTOMÁTICOS - DESHABILITADOS PARA JENKINS LOCAL
-    // NOTA: Para Jenkins local en contenedor, usar EJECUCIÓN MANUAL únicamente
     /*
     triggers {
-        // ❌ NO FUNCIONA LOCAL: GitHub no puede enviar webhooks a localhost
         // githubPush()
-        
-        // ❌ PROBLEMÁTICO LOCAL: Consume recursos innecesariamente
         // pollSCM('H/5 * * * *')
-        
-        // ❌ INNECESARIO LOCAL: Para desarrollo local es mejor manual
         // parameterizedCron('''
-        //     # Stage: cada push o diario a las 3 AM
-        //     H 3 * * * %ENVIRONMENT=stage;SKIP_TESTS=false
-        //     # Master: solo manual (sin cron automático para producción)
+        // # Stage: cada push o diario a las 3 AM
+        // H 3 * * * %ENVIRONMENT=stage;SKIP_TESTS=false
+        // # Master: solo manual (sin cron automático para producción)
         // ''')
     }
     */
 
     environment {
-        // Docker Desktop Configuration (Local Development)
-        DOCKER_REGISTRY = 'host.docker.internal:5000'  // Local Docker registry
-        K8S_CONTEXT = 'docker-desktop'       // Docker Desktop Kubernetes context
+        DOCKER_REGISTRY = 'host.docker.internal:5000'
+        K8S_CONTEXT = 'docker-desktop'
         K8S_TARGET_NAMESPACE = 'ecommerce-app'
         K8S_MANIFESTS_ROOT = 'k8s'
         DOCKERFILE_DIR_ROOT = '.'
         
-        // Environment Configuration
+        DEV_ENV = 'dev'
         STAGE_ENV = 'stage'
         MASTER_ENV = 'master'
         
-        // Tools
         MAVEN_OPTS = '-Xmx1024m'
         JAVA_HOME = '/opt/java/openjdk'
     }
@@ -42,7 +31,7 @@ pipeline {
     parameters {
         choice(
             name: 'ENVIRONMENT',
-            choices: ['stage', 'master'],
+            choices: ['dev', 'stage', 'master'],
             description: 'Environment to deploy to'
         )
         string(
@@ -69,10 +58,8 @@ pipeline {
                     echo "=== CHECKOUT & WORKSPACE VERIFICATION ==="
                     checkout scm
                     
-                    // Verificar estructura del workspace
                     sh 'ls -la'
                     
-                    // Verificar archivos clave
                     def keyFiles = [
                         "api-gateway/pom.xml",
                         "proxy-client/pom.xml", 
@@ -96,21 +83,17 @@ pipeline {
             }
         }
 
-        // COMENTADO PARA TESTING - Descomenta cuando quieras probar K8s
         /*
         stage('Initialize Docker & Kubernetes') {
             steps {
                 script {
                     echo "=== INITIALIZE DOCKER & KUBERNETES ==="
                     
-                    // Set Kubernetes context to Docker Desktop
                     sh "kubectl config use-context ${env.K8S_CONTEXT}"
                     
-                    // Verify connection
                     sh "kubectl cluster-info"
                     sh "kubectl get nodes"
                     
-                    // Create namespace if not exists
                     sh """
                         kubectl get namespace ${env.K8S_TARGET_NAMESPACE} || \
                         kubectl create namespace ${env.K8S_TARGET_NAMESPACE}
@@ -146,7 +129,6 @@ pipeline {
                             dir("${env.DOCKERFILE_DIR_ROOT}/${service}") {
                                 sh "./mvnw clean test -Dtest=*ServiceImplTest* -Dmaven.test.failure.ignore=true"
                                 
-                                // Archivar reportes de pruebas
                                 if (fileExists('target/surefire-reports/TEST-*.xml')) {
                                     publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
                                 }
@@ -162,7 +144,6 @@ pipeline {
                         }
                     }
                     
-                    // Mostrar resumen
                     echo "=== RESUMEN PRUEBAS UNITARIAS ==="
                     testResults.each { service, result ->
                         echo "${service}: ${result}"
@@ -184,7 +165,6 @@ pipeline {
                             echo "Ejecutando pruebas de integración..."
                             sh "./mvnw test -Dtest=*IntegrationTest* -Dmaven.test.failure.ignore=true"
                             
-                            // Archivar reportes
                             if (fileExists('target/surefire-reports/TEST-*.xml')) {
                                 publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
                             }
@@ -213,7 +193,6 @@ pipeline {
                             echo "Ejecutando pruebas E2E..."
                             sh "./mvnw test -Dtest=*EndToEndTest* -Dmaven.test.failure.ignore=true"
                             
-                            // Archivar reportes
                             if (fileExists('target/surefire-reports/TEST-*.xml')) {
                                 publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
                             }
@@ -229,7 +208,6 @@ pipeline {
             }
         }
 
-        // COMENTADO PARA TESTING - Solo ejecutando tests, no build/deploy
         /*
         stage('Build & Package') {
             steps {
@@ -254,7 +232,6 @@ pipeline {
                             dir("${env.DOCKERFILE_DIR_ROOT}/${service}") {
                                 sh "./mvnw clean package -DskipTests"
                                 
-                                // Verificar que el JAR se creó
                                 def jarFile = sh(
                                     script: "find target -name '*.jar' -not -name '*sources*' -not -name '*javadoc*' | head -1",
                                     returnStdout: true
@@ -307,17 +284,13 @@ pipeline {
                 script {
                     echo "=== DEPLOY INFRASTRUCTURE SERVICES ==="
                     
-                    // Apply common configurations
                     applyKubernetesManifests('namespace.yaml')
                     applyKubernetesManifests('common-config.yaml')
                     
-                    // Deploy Zipkin (using pre-built image)
                     deployPreBuiltService('zipkin')
                     
-                    // Deploy Service Discovery
                     deployMicroservice('service-discovery', params.BUILD_TAG)
                     
-                    // Deploy Cloud Config
                     deployMicroservice('cloud-config', params.BUILD_TAG)
                     
                     echo "✓ Servicios de infraestructura desplegados"
@@ -360,11 +333,9 @@ pipeline {
                 script {
                     echo "=== SYSTEM VALIDATION TESTS ==="
                     
-                    // Wait for services to be ready
                     sleep(time: 30, unit: 'SECONDS')
                     
                     try {
-                        // Check service health endpoints
                         def services = ['api-gateway', 'proxy-client', 'user-service', 'product-service']
                         
                         services.each { service ->
@@ -376,7 +347,6 @@ pipeline {
                         
                         echo "✓ Todos los servicios están listos"
                         
-                        // Run basic smoke tests
                         runSmokeTests()
                         
                     } catch (Exception e) {
@@ -399,7 +369,6 @@ pipeline {
             }
         }
 
-        // Performance Tests - Temporarily disabled (to be added later)
         /*
         stage('Performance Tests') {
             when {
@@ -413,12 +382,10 @@ pipeline {
                     echo "=== PERFORMANCE TESTS ==="
                     
                     try {
-                        // Basic performance validation
                         runPerformanceTests()
                         echo "✓ Pruebas de rendimiento completadas"
                     } catch (Exception e) {
                         echo "⚠️ Pruebas de rendimiento fallaron: ${e.message}"
-                        // No fallar el pipeline por performance tests
                     }
                 }
             }
@@ -431,18 +398,14 @@ pipeline {
             script {
                 echo "=== PIPELINE CLEANUP ==="
                 
-                // Archive test results
                 archiveArtifacts artifacts: '**/target/surefire-reports/**', allowEmptyArchive: true
                 
-                // Clean up temporary files
                 sh "rm -f processed-*-deployment.yaml"
                 sh "rm -f release-notes-*.md"
                 
-                // Show final status
                 def status = currentBuild.currentResult
                 echo "Pipeline Status: ${status}"
                 
-                // Send notifications (if configured)
                 if (status == 'SUCCESS') {
                     echo "✅ Pipeline ejecutado exitosamente"
                 } else {
@@ -450,7 +413,6 @@ pipeline {
                 }
             }
         }
-        // COMENTADO PARA TESTING - Estas secciones usan kubectl que no está disponible en modo testing
         /*
         success {
             script {
@@ -458,7 +420,6 @@ pipeline {
                 echo "Environment: ${params.ENVIRONMENT}"
                 echo "Build Tag: ${params.BUILD_TAG}"
                 
-                // Show deployment summary
                 sh """
                     echo "=== DEPLOYMENT SUMMARY ==="
                     kubectl get pods -n ${env.K8S_TARGET_NAMESPACE}
@@ -471,7 +432,6 @@ pipeline {
                 echo "💥 DEPLOYMENT FAILED!"
                 echo "Check the logs above for error details"
                 
-                // Show current cluster state for debugging
                 sh """
                     echo "=== CLUSTER STATE FOR DEBUGGING ==="
                     kubectl get pods -n ${env.K8S_TARGET_NAMESPACE} || true
@@ -483,8 +443,6 @@ pipeline {
     }
 }
 
-// Helper Functions
-
 def buildAndPushDockerImage(String serviceName, String buildTag) {
     echo "Construyendo imagen Docker para ${serviceName}..."
     
@@ -492,10 +450,8 @@ def buildAndPushDockerImage(String serviceName, String buildTag) {
     def contextPath = "${env.DOCKERFILE_DIR_ROOT}/${serviceName}"
     
     dir(contextPath) {
-        // Build Docker image
         sh "docker build -t ${imageName} ."
         
-        // Push to local registry (if configured)
         try {
             sh "docker push ${imageName}"
             echo "✓ Imagen ${imageName} subida al registry"
@@ -529,7 +485,6 @@ def deployPreBuiltService(String serviceName) {
             sh "kubectl apply -f ${serviceFile} -n ${env.K8S_TARGET_NAMESPACE}"
         }
         
-        // Wait for deployment
         sh "kubectl rollout status deployment/${serviceName} -n ${env.K8S_TARGET_NAMESPACE} --timeout=300s"
     }
 }
@@ -543,11 +498,9 @@ def deployMicroservice(String serviceName, String buildTag) {
     def ingressFile = "${env.K8S_MANIFESTS_ROOT}/${serviceName}/ingress.yaml"
     
     if (fileExists(deploymentFile)) {
-        // Update deployment with new image
         def processedFile = "processed-${serviceName}-deployment.yaml"
         def deploymentContent = readFile(deploymentFile)
         
-        // Replace image placeholder with actual image
         def updatedContent = deploymentContent.replaceAll(
             /image: .*${serviceName}:.*/, 
             "image: ${imageName}"
@@ -555,7 +508,6 @@ def deployMicroservice(String serviceName, String buildTag) {
         
         writeFile(file: processedFile, text: updatedContent)
         
-        // Apply manifests
         sh "kubectl apply -f ${processedFile} -n ${env.K8S_TARGET_NAMESPACE}"
         
         if (fileExists(serviceFile)) {
@@ -566,7 +518,6 @@ def deployMicroservice(String serviceName, String buildTag) {
             sh "kubectl apply -f ${ingressFile} -n ${env.K8S_TARGET_NAMESPACE}"
         }
         
-        // Wait for rollout
         sh "kubectl rollout status deployment/${serviceName} -n ${env.K8S_TARGET_NAMESPACE} --timeout=300s"
         
         echo "✓ ${serviceName} desplegado exitosamente"
@@ -578,22 +529,17 @@ def deployMicroservice(String serviceName, String buildTag) {
 def runSmokeTests() {
     echo "Ejecutando smoke tests..."
     
-    // Test API Gateway health
     sh """
         kubectl get service api-gateway -n ${env.K8S_TARGET_NAMESPACE} || echo "API Gateway service not found"
     """
     
-    // You can add more specific smoke tests here
     echo "✓ Smoke tests completados"
 }
 
-// Performance Tests - Temporarily disabled (to be added later)
 /*
 def runPerformanceTests() {
     echo "Ejecutando pruebas básicas de rendimiento..."
     
-    // Basic load test simulation
-    // In a real scenario, you would use tools like JMeter, Gatling, etc.
     sh """
         echo "Performance test simulation..."
         sleep 10
@@ -646,10 +592,6 @@ def generateReleaseNotes() {
 ## Deployment Status
 ✅ Successfully deployed to ${params.ENVIRONMENT} environment
 
-## Next Steps
-- Monitor application health in Kubernetes dashboard
-- Check Zipkin for distributed tracing
-- Verify all services are responding correctly
 
 ---
 *Generated automatically by Jenkins Pipeline*
