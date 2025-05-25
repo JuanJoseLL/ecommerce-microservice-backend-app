@@ -4,9 +4,10 @@ metadata:
   name: api-gateway-ingress
   namespace: ecommerce-app
   annotations:
-    #nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
-  ingressClassName: webapprouting.kubernetes.azure.com
+  ingressClassName: nginx
   rules:
   - http:
       paths:

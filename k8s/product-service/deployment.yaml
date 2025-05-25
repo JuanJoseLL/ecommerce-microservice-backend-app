@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: micsvcwsacr.azurecr.io/product-service:1
+          image: product-service:1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8500

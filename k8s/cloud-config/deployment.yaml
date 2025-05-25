@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: cloud-config
+  namespace: ecommerce-app
   labels:
     app: cloud-config
 spec:
@@ -16,7 +17,7 @@ spec:
     spec:
       containers:
       - name: cloud-config
-        image: micsvcwsacr.azurecr.io/cloud-config:PLACEHOLDER_TAG
+        image: cloud-config:1
         ports:
         - containerPort: 9296
         resources:

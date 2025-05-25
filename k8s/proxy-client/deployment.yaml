@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: proxy-client
-          image: micsvcwsacr.azurecr.io/proxy-client:2 # Confirma imagen y tag
+          image: proxy-service:1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8900

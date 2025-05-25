@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: service-discovery
+  namespace: ecommerce-app
   labels:
     app: service-discovery
 spec:
@@ -16,7 +17,7 @@ spec:
     spec:
       containers:
       - name: service-discovery
-        image: micsvcwsacr.azurecr.io/service-discovery:PLACEHOLDER_TAG
+        image: eureka:1
         ports:
         - containerPort: 8761
         resources:
