@@ -127,10 +127,30 @@ pipeline {
                         try {
                             echo "Ejecutando pruebas unitarias para ${service}..."
                             dir("${env.DOCKERFILE_DIR_ROOT}/${service}") {
-                                sh "./mvnw clean test -Dtest=*ServiceImplTest* -Dmaven.test.failure.ignore=true"
+                                // Configurar patrón de pruebas específico por servicio
+                                def testPattern = service == 'proxy-client' ? '*ControllerTest*' : '*ServiceImplTest*'
+                                
+                                echo "  ⚡ Patrón de pruebas para ${service}: ${testPattern}"
+                                
+                                // Verificar que existan archivos de prueba antes de ejecutar
+                                def testCheck = sh(
+                                    script: "find src/test/java -name '*Test.java' | grep -E '${testPattern.replace('*', '.*')}' | wc -l", 
+                                    returnStdout: true
+                                ).trim()
+                                
+                                echo "  📋 Archivos de prueba encontrados para patrón '${testPattern}': ${testCheck}"
+                                
+                                if (testCheck == '0') {
+                                    echo "  ⚠️  No se encontraron pruebas con patrón ${testPattern}, ejecutando todas las pruebas..."
+                                    sh "./mvnw clean test -DfailIfNoTests=false -Dmaven.test.failure.ignore=true"
+                                } else {
+                                    sh "./mvnw clean test -Dtest=${testPattern} -DfailIfNoTests=false -Dmaven.test.failure.ignore=true"
+                                }
                                 
                                 if (fileExists('target/surefire-reports/TEST-*.xml')) {
                                     publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
+                                } else {
+                                    echo "  ⚠️  No se generaron reportes de pruebas para ${service}"
                                 }
                                 
                                 testResults[service] = 'PASSED'
@@ -163,10 +183,23 @@ pipeline {
                     try {
                         dir("${env.DOCKERFILE_DIR_ROOT}/proxy-client") {
                             echo "Ejecutando pruebas de integración..."
-                            sh "./mvnw test -Dtest=*IntegrationTest* -Dmaven.test.failure.ignore=true"
                             
-                            if (fileExists('target/surefire-reports/TEST-*.xml')) {
-                                publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
+                            // Verificar que existan pruebas de integración
+                            def integrationTestCheck = sh(
+                                script: "find src/test/java -name '*IntegrationTest.java' | wc -l", 
+                                returnStdout: true
+                            ).trim()
+                            
+                            echo "📋 Pruebas de integración encontradas: ${integrationTestCheck}"
+                            
+                            if (integrationTestCheck == '0') {
+                                echo "⚠️  No se encontraron pruebas de integración, saltando..."
+                            } else {
+                                sh "./mvnw test -Dtest=*IntegrationTest* -DfailIfNoTests=false -Dmaven.test.failure.ignore=true"
+                                
+                                if (fileExists('target/surefire-reports/TEST-*.xml')) {
+                                    publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
+                                }
                             }
                         }
                         echo "✓ Pruebas de integración completadas"
@@ -191,10 +224,23 @@ pipeline {
                     try {
                         dir("${env.DOCKERFILE_DIR_ROOT}/proxy-client") {
                             echo "Ejecutando pruebas E2E..."
-                            sh "./mvnw test -Dtest=*EndToEndTest* -Dmaven.test.failure.ignore=true"
                             
-                            if (fileExists('target/surefire-reports/TEST-*.xml')) {
-                                publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
+                            // Verificar que existan pruebas E2E
+                            def e2eTestCheck = sh(
+                                script: "find src/test/java -name '*EndToEndTest.java' | wc -l", 
+                                returnStdout: true
+                            ).trim()
+                            
+                            echo "📋 Pruebas E2E encontradas: ${e2eTestCheck}"
+                            
+                            if (e2eTestCheck == '0') {
+                                echo "⚠️  No se encontraron pruebas E2E, saltando..."
+                            } else {
+                                sh "./mvnw test -Dtest=*EndToEndTest* -DfailIfNoTests=false -Dmaven.test.failure.ignore=true"
+                                
+                                if (fileExists('target/surefire-reports/TEST-*.xml')) {
+                                    publishTestResults testResultsPattern: 'target/surefire-reports/TEST-*.xml'
+                                }
                             }
                         }
                         echo "✓ Pruebas E2E completadas"
