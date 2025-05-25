@@ -35,7 +35,7 @@ pipeline {
         MASTER_ENV = 'master'
         
         // Tools
-        MAVEN_OPTS = '-Xmx1024m -XX:MaxPermSize=256m'
+        MAVEN_OPTS = '-Xmx1024m'
         JAVA_HOME = '/opt/java/openjdk'
     }
 
