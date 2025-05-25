@@ -96,6 +96,8 @@ pipeline {
             }
         }
 
+        // COMENTADO PARA TESTING - Descomenta cuando quieras probar K8s
+        /*
         stage('Initialize Docker & Kubernetes') {
             steps {
                 script {
@@ -118,6 +120,7 @@ pipeline {
                 }
             }
         }
+        */
 
         stage('Unit Tests') {
             when {
@@ -226,6 +229,175 @@ pipeline {
             }
         }
 
+        // COMENTADO PARA TESTING - Solo ejecutando tests, no build/deploy
+        /*
+        stage('Build & Package') {
+            steps {
+                script {
+                    echo "=== BUILD & PACKAGE ==="
+                    
+                    def microservices = [
+                        'service-discovery',
+                        'cloud-config',
+                        'api-gateway',
+                        'proxy-client',
+                        'user-service',
+                        'product-service',
+                        'order-service',
+                        'payment-service',
+                        'shipping-service'
+                    ]
+                    
+                    microservices.each { service ->
+                        try {
+                            echo "Construyendo ${service}..."
+                            dir("${env.DOCKERFILE_DIR_ROOT}/${service}") {
+                                sh "./mvnw clean package -DskipTests"
+                                
+                                // Verificar que el JAR se creó
+                                def jarFile = sh(
+                                    script: "find target -name '*.jar' -not -name '*sources*' -not -name '*javadoc*' | head -1",
+                                    returnStdout: true
+                                ).trim()
+                                
+                                if (jarFile) {
+                                    echo "✓ JAR creado: ${jarFile}"
+                                } else {
+                                    error "❌ JAR no encontrado para ${service}"
+                                }
+                            }
+                        } catch (Exception e) {
+                            error "❌ Error construyendo ${service}: ${e.message}"
+                        }
+                    }
+                    
+                    echo "✓ Construcción completada para todos los microservicios"
+                }
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    echo "=== DOCKER BUILD & PUSH ==="
+                    
+                    def microservices = [
+                        'service-discovery',
+                        'cloud-config', 
+                        'api-gateway',
+                        'proxy-client',
+                        'user-service',
+                        'product-service',
+                        'order-service',
+                        'payment-service',
+                        'shipping-service'
+                    ]
+                    
+                    microservices.each { service ->
+                        buildAndPushDockerImage(service, params.BUILD_TAG)
+                    }
+                    
+                    echo "✓ Todas las imágenes Docker construidas y subidas"
+                }
+            }
+        }
+
+        stage('Deploy Infrastructure Services') {
+            steps {
+                script {
+                    echo "=== DEPLOY INFRASTRUCTURE SERVICES ==="
+                    
+                    // Apply common configurations
+                    applyKubernetesManifests('namespace.yaml')
+                    applyKubernetesManifests('common-config.yaml')
+                    
+                    // Deploy Zipkin (using pre-built image)
+                    deployPreBuiltService('zipkin')
+                    
+                    // Deploy Service Discovery
+                    deployMicroservice('service-discovery', params.BUILD_TAG)
+                    
+                    // Deploy Cloud Config
+                    deployMicroservice('cloud-config', params.BUILD_TAG)
+                    
+                    echo "✓ Servicios de infraestructura desplegados"
+                }
+            }
+        }
+
+        stage('Deploy Application Services') {
+            steps {
+                script {
+                    echo "=== DEPLOY APPLICATION SERVICES ==="
+                    
+                    def appServices = [
+                        'user-service',
+                        'product-service', 
+                        'order-service',
+                        'payment-service',
+                        'shipping-service',
+                        'proxy-client',
+                        'api-gateway'
+                    ]
+                    
+                    appServices.each { service ->
+                        deployMicroservice(service, params.BUILD_TAG)
+                    }
+                    
+                    echo "✓ Servicios de aplicación desplegados"
+                }
+            }
+        }
+
+        stage('System Validation Tests') {
+            when {
+                allOf {
+                    not { params.SKIP_TESTS }
+                    expression { params.ENVIRONMENT == 'master' }
+                }
+            }
+            steps {
+                script {
+                    echo "=== SYSTEM VALIDATION TESTS ==="
+                    
+                    // Wait for services to be ready
+                    sleep(time: 30, unit: 'SECONDS')
+                    
+                    try {
+                        // Check service health endpoints
+                        def services = ['api-gateway', 'proxy-client', 'user-service', 'product-service']
+                        
+                        services.each { service ->
+                            sh """
+                                kubectl wait --for=condition=ready pod -l app=${service} \
+                                -n ${env.K8S_TARGET_NAMESPACE} --timeout=300s
+                            """
+                        }
+                        
+                        echo "✓ Todos los servicios están listos"
+                        
+                        // Run basic smoke tests
+                        runSmokeTests()
+                        
+                    } catch (Exception e) {
+                        error "❌ Validación del sistema falló: ${e.message}"
+                    }
+                }
+            }
+        }
+        */
+
+        stage('Generate Release Notes') {
+            when {
+                expression { params.GENERATE_RELEASE_NOTES }
+            }
+            steps {
+                script {
+                    echo "=== GENERATE RELEASE NOTES ==="
+                    generateReleaseNotes()
+                }
+            }
+        }
 
         // Performance Tests - Temporarily disabled (to be added later)
         /*
@@ -278,6 +450,8 @@ pipeline {
                 }
             }
         }
+        // COMENTADO PARA TESTING - Estas secciones usan kubectl que no está disponible en modo testing
+        /*
         success {
             script {
                 echo "🎉 DEPLOYMENT SUCCESSFUL!"
@@ -305,6 +479,7 @@ pipeline {
                 """
             }
         }
+        */
     }
 }
 
@@ -466,7 +641,7 @@ def generateReleaseNotes() {
 - **System Validation**: ${params.ENVIRONMENT == 'master' ? 'EXECUTED' : 'SKIPPED'}
 
 ## Changes
-$(git log --oneline --since="1 day ago" | head -10 || echo "No recent commits found")
+\$(git log --oneline --since="1 day ago" | head -10 || echo "No recent commits found")
 
 ## Deployment Status
 ✅ Successfully deployed to ${params.ENVIRONMENT} environment
