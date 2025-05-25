@@ -36,7 +36,7 @@ pipeline {
         
         // Tools
         MAVEN_OPTS = '-Xmx1024m -XX:MaxPermSize=256m'
-        JAVA_HOME = '/usr/lib/jvm/java-11-openjdk-amd64'
+        JAVA_HOME = '/opt/java/openjdk'
     }
 
     parameters {
