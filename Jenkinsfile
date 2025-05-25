@@ -124,7 +124,7 @@ pipeline {
 
         stage('Unit Tests') {
             when {
-                not { params.SKIP_TESTS }
+                expression { params.SKIP_TESTS == false }
             }
             steps {
                 script {
@@ -173,7 +173,7 @@ pipeline {
 
         stage('Integration Tests') {
             when {
-                not { params.SKIP_TESTS }
+                expression { params.SKIP_TESTS == false }
             }
             steps {
                 script {
@@ -202,7 +202,7 @@ pipeline {
 
         stage('End-to-End Tests') {
             when {
-                not { params.SKIP_TESTS }
+                expression { params.SKIP_TESTS == false }
             }
             steps {
                 script {
