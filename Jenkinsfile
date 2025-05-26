@@ -428,15 +428,9 @@ pipeline {
         stage('Performance Tests') {
             when {
                 allOf {
-                    not { 
-                        params.SKIP_TESTS == true
-                    }
-                    not { 
-                        params.SKIP_PERFORMANCE_TESTS == true
-                    }
-                    expression { 
-                        params.ENVIRONMENT == 'master' 
-                    }
+                    expression { !params.SKIP_TESTS }
+                    expression { !params.SKIP_PERFORMANCE_TESTS }
+                    expression { params.ENVIRONMENT == 'master' }
                 }
             }
             steps {
@@ -841,3 +835,5 @@ def generateReleaseNotes() {
     
     echo "✓ Release Notes generados: ${releaseNotesFile}"
 }
+
+// Additional utility functions can be added here
