@@ -426,13 +426,7 @@ pipeline {
         }
 
         stage('Performance Tests') {
-            when {
-                allOf {
-                    expression { !params.SKIP_TESTS }
-                    expression { !params.SKIP_PERFORMANCE_TESTS }
-                    expression { params.ENVIRONMENT == 'master' }
-                }
-            }
+           
             steps {
                 script {
                     def performanceLevel = params.PERFORMANCE_TEST_LEVEL ?: 'standard'
