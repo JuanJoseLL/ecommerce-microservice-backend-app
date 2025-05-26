@@ -435,6 +435,7 @@ pipeline {
             }
             steps {
                 script {
+                    params.PERFORMANCE_TEST_LEVEL = params.PERFORMANCE_TEST_LEVEL ?: 'standard'
                     echo "=== PERFORMANCE TESTS ==="
                     echo "🎛️ Performance Test Level: ${params.PERFORMANCE_TEST_LEVEL}"
                     
