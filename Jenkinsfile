@@ -435,9 +435,9 @@ pipeline {
             }
             steps {
                 script {
-                    params.PERFORMANCE_TEST_LEVEL = params.PERFORMANCE_TEST_LEVEL ?: 'standard'
+                    def performanceLevel = params.PERFORMANCE_TEST_LEVEL ?: 'standard'
                     echo "=== PERFORMANCE TESTS ==="
-                    echo "🎛️ Performance Test Level: ${params.PERFORMANCE_TEST_LEVEL}"
+                    echo "🎛️ Performance Test Level: ${performanceLevel}"
                     
                     try {
                         runPerformanceTests()
@@ -453,19 +453,16 @@ pipeline {
             }
             post {
                 always {
-                    // Publicar reportes HTML de rendimiento
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'performance-tests/performance_results',
-                        reportFiles: '*.html',
-                        reportName: 'Performance Test Reports',
-                        reportTitles: 'Performance Test Results'
-                    ])
-                    
-                    // Archivar reportes adicionales
+                    // Archivar reportes de rendimiento (HTML Publisher plugin no disponible)
                     archiveArtifacts artifacts: 'performance-tests/performance_results/**/*', allowEmptyArchive: true
+                    
+                    // Publicar reportes como archivos simples
+                    script {
+                        if (fileExists('performance-tests/performance_results')) {
+                            echo "📊 Reportes de rendimiento archivados en artifacts"
+                            sh "find performance-tests/performance_results -name '*.html' -o -name '*.json' -o -name '*.csv' | head -10"
+                        }
+                    }
                 }
                 success {
                     echo "🎯 Pruebas de rendimiento exitosas - Sistema cumple con métricas de performance"
