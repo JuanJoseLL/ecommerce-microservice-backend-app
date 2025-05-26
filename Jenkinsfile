@@ -1,17 +1,6 @@
 pipeline {
     agent any
 
-    /*
-    triggers {
-        // githubPush()
-        // pollSCM('H/5 * * * *')
-        // parameterizedCron('''
-        // # Stage: cada push o diario a las 3 AM
-        // H 3 * * * %ENVIRONMENT=stage;SKIP_TESTS=false
-        // # Master: solo manual (sin cron automático para producción)
-        // ''')
-    }
-    */
 
     environment {
         DOCKER_REGISTRY = 'host.docker.internal:5000'
@@ -93,7 +82,7 @@ pipeline {
             }
         }
 
-        /*
+        
         stage('Initialize Docker & Kubernetes') {
             steps {
                 script {
@@ -113,7 +102,7 @@ pipeline {
                 }
             }
         }
-        */
+        
 
         stage('Unit Tests') {
             when {
@@ -264,7 +253,7 @@ pipeline {
             }
         }
 
-        /*
+        
         stage('Build & Package') {
             steps {
                 script {
@@ -411,7 +400,7 @@ pipeline {
                 }
             }
         }
-        */
+        
 
         stage('Generate Release Notes') {
             when {
@@ -488,7 +477,7 @@ pipeline {
                 }
             }
         }
-        /*
+        
         success {
             script {
                 echo "🎉 DEPLOYMENT SUCCESSFUL!"
@@ -514,7 +503,7 @@ pipeline {
                 """
             }
         }
-        */
+        
     }
 }
 
