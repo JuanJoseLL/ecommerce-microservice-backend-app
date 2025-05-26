@@ -626,19 +626,7 @@ def runPerformanceTests() {
     try {
         // Verificar que los servicios estén listos
         echo "⏳ Verificando estado de servicios..."
-        sh """
-            kubectl wait --for=condition=ready pod -l app=api-gateway \
-            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
-            
-            kubectl wait --for=condition=ready pod -l app=proxy-client \
-            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
-            
-            kubectl wait --for=condition=ready pod -l app=user-service \
-            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
-            
-            kubectl wait --for=condition=ready pod -l app=product-service \
-            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
-        """
+        
         
         // Esperar estabilización de servicios
         echo "⏱️ Esperando estabilización de servicios (60 segundos)..."
