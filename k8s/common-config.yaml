@@ -61,6 +61,12 @@ data:
     server.error.whitelabel.enabled=false
     spring.application.name=API-GATEWAY
     
+    # Configuración de Eureka
+    eureka.client.serviceUrl.defaultZone=http://service-discovery:8761/eureka/
+    eureka.client.register-with-eureka=true
+    eureka.client.fetch-registry=true
+    eureka.client.enabled=true
+    
     # Configuración de circuit breaker
     resilience4j.circuitbreaker.instances.apiGateway.register-health-indicator=true
     resilience4j.circuitbreaker.instances.apiGateway.event-consumer-buffer-size=10
@@ -145,6 +151,12 @@ data:
     server.port=8900
     server.servlet.context-path=/app
     spring.application.name=PROXY-CLIENT
+    
+    # Configuración de Eureka
+    eureka.client.serviceUrl.defaultZone=http://service-discovery:8761/eureka/
+    eureka.client.register-with-eureka=true
+    eureka.client.fetch-registry=true
+    eureka.client.enabled=true
 
     # Configuración de circuit breaker
     resilience4j.circuitbreaker.instances.proxyService.register-health-indicator=true

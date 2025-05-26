@@ -1,0 +1,7 @@
+[2025-05-25 20:32:08,229] DESKTOP-VQNMJR5/INFO/locust.main: Starting Locust 2.37.5
+[2025-05-25 20:32:08,229] DESKTOP-VQNMJR5/INFO/locust.main: Run time limit set to 30 seconds
+[2025-05-25 20:32:08,231] DESKTOP-VQNMJR5/INFO/locust.runners: Ramping to 5 users at a rate of 1.00 per second
+[2025-05-25 20:32:15,003] DESKTOP-VQNMJR5/INFO/locust.runners: All users spawned: {"HighVolumeOrderUser": 3, "OrderCreationUser": 2} (5 total users)
+[2025-05-25 20:32:40,789] DESKTOP-VQNMJR5/INFO/locust.main: --run-time limit reached, shutting down
+[2025-05-25 20:32:40,884] DESKTOP-VQNMJR5/INFO/locust.main: writing html report to file: performance-tests/performance_results/order_creation_debug_20250525_203207.html
+[2025-05-25 20:32:40,886] DESKTOP-VQNMJR5/INFO/locust.main: Shutting down (exit code 1)

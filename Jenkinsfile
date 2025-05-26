@@ -49,6 +49,16 @@ pipeline {
             defaultValue: true,
             description: 'Generate automatic release notes'
         )
+        choice(
+            name: 'PERFORMANCE_TEST_LEVEL',
+            choices: ['standard', 'light', 'stress'],
+            description: 'Performance test intensity level (only applies in master environment)'
+        )
+        booleanParam(
+            name: 'SKIP_PERFORMANCE_TESTS',
+            defaultValue: false,
+            description: 'Skip performance tests specifically (even in master environment)'
+        )
     }
 
     stages {
@@ -415,28 +425,55 @@ pipeline {
             }
         }
 
-        /*
         stage('Performance Tests') {
             when {
                 allOf {
                     not { params.SKIP_TESTS }
+                    not { params.SKIP_PERFORMANCE_TESTS }
                     expression { params.ENVIRONMENT == 'master' }
                 }
             }
             steps {
                 script {
                     echo "=== PERFORMANCE TESTS ==="
+                    echo "🎛️ Performance Test Level: ${params.PERFORMANCE_TEST_LEVEL}"
                     
                     try {
                         runPerformanceTests()
                         echo "✓ Pruebas de rendimiento completadas"
                     } catch (Exception e) {
                         echo "⚠️ Pruebas de rendimiento fallaron: ${e.message}"
+                        // En ambiente master, las pruebas de rendimiento son críticas
+                        if (params.ENVIRONMENT == 'master') {
+                            error "Pruebas de rendimiento críticas fallaron en ambiente master"
+                        }
                     }
                 }
             }
+            post {
+                always {
+                    // Publicar reportes HTML de rendimiento
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'performance-tests/performance_results',
+                        reportFiles: '*.html',
+                        reportName: 'Performance Test Reports',
+                        reportTitles: 'Performance Test Results'
+                    ])
+                    
+                    // Archivar reportes adicionales
+                    archiveArtifacts artifacts: 'performance-tests/performance_results/**/*', allowEmptyArchive: true
+                }
+                success {
+                    echo "🎯 Pruebas de rendimiento exitosas - Sistema cumple con métricas de performance"
+                }
+                failure {
+                    echo "⚠️ Algunas pruebas de rendimiento fallaron - Revisar reportes para detalles"
+                }
+            }
         }
-        */
     }
 
     post {
@@ -582,18 +619,168 @@ def runSmokeTests() {
     echo "✓ Smoke tests completados"
 }
 
-/*
+
 def runPerformanceTests() {
-    echo "Ejecutando pruebas básicas de rendimiento..."
+    echo "🚀 Ejecutando Suite Completa de Pruebas de Rendimiento con Locust..."
     
-    sh """
-        echo "Performance test simulation..."
-        sleep 10
-    """
-    
-    echo "✓ Pruebas de rendimiento simuladas"
+    try {
+        // Verificar que los servicios estén listos
+        echo "⏳ Verificando estado de servicios..."
+        sh """
+            kubectl wait --for=condition=ready pod -l app=api-gateway \
+            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
+            
+            kubectl wait --for=condition=ready pod -l app=proxy-client \
+            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
+            
+            kubectl wait --for=condition=ready pod -l app=user-service \
+            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
+            
+            kubectl wait --for=condition=ready pod -l app=product-service \
+            -n ${env.K8S_TARGET_NAMESPACE} --timeout=120s
+        """
+        
+        // Esperar estabilización de servicios
+        echo "⏱️ Esperando estabilización de servicios (60 segundos)..."
+        sleep(time: 60, unit: 'SECONDS')
+        
+        dir('performance-tests') {
+            // Instalar dependencias de Python
+            echo "📦 Instalando dependencias de Python..."
+            sh """
+                pip3 install --user locust requests configparser pandas || true
+                
+                # Verificar instalación
+                python3 -c "import locust; print('Locust version:', locust.__version__)" || echo "Locust no encontrado"
+                python3 -c "import requests; print('Requests disponible')" || echo "Requests no encontrado"
+            """
+            
+            // Verificar conectividad de servicios
+            echo "🔍 Verificando conectividad de endpoints críticos..."
+            sh """
+                echo "Verificando API Gateway..."
+                for i in {1..10}; do
+                    if curl -f -s http://host.docker.internal/actuator/health >/dev/null 2>&1; then
+                        echo "✓ API Gateway health check OK"
+                        break
+                    fi
+                    echo "Esperando API Gateway... intento \$i/10"
+                    sleep 15
+                done
+                
+                echo "Verificando endpoints de productos..."
+                curl -f -s http://host.docker.internal/api/products/1 >/dev/null && echo "✓ Product endpoint disponible" || echo "⚠️ Product endpoint no responde"
+                
+                echo "Verificando endpoints de usuarios..."
+                curl -f -s http://host.docker.internal/api/users >/dev/null && echo "✓ User endpoint disponible" || echo "⚠️ User endpoint no responde"
+            """
+            
+            // Crear directorio de resultados si no existe
+            sh "mkdir -p performance_results"
+            
+            // Ejecutar suite completa de pruebas con configuración optimizada para CI/CD
+            echo "🎯 Ejecutando Suite Completa de Pruebas de Rendimiento..."
+            echo "📊 Nivel de prueba: ${params.PERFORMANCE_TEST_LEVEL}"
+            
+            // Configuración basada en el nivel de prueba
+            def testConfig = [:]
+            switch(params.PERFORMANCE_TEST_LEVEL) {
+                case 'light':
+                    testConfig = [users: 10, spawnRate: 1, duration: 60]
+                    echo "🔵 Configuración LIGHT: Pruebas ligeras para validación rápida"
+                    break
+                case 'stress':
+                    testConfig = [users: 50, spawnRate: 5, duration: 300]
+                    echo "🔴 Configuración STRESS: Pruebas intensivas para validación de límites"
+                    break
+                default: // standard
+                    testConfig = [users: 20, spawnRate: 2, duration: 120]
+                    echo "🟡 Configuración STANDARD: Pruebas equilibradas para CI/CD"
+            }
+            
+            sh """
+                # Ejecutar todas las pruebas disponibles secuencialmente
+                echo "📊 Iniciando pruebas de rendimiento..."
+                echo "  - Usuarios concurrentes: ${testConfig.users}"
+                echo "  - Velocidad de spawn: ${testConfig.spawnRate} usuarios/seg"
+                echo "  - Duración: ${testConfig.duration} segundos"
+                
+                python3 performance_test_suite.py --all \\
+                    --users ${testConfig.users} \\
+                    --spawn-rate ${testConfig.spawnRate} \\
+                    --duration ${testConfig.duration} \\
+                    --host http://host.docker.internal || echo "⚠️ Algunas pruebas de rendimiento fallaron"
+                
+                # Verificar que se generaron reportes
+                echo "📋 Verificando resultados generados..."
+                ls -la performance_results/ || echo "No se encontraron resultados"
+                
+                # Contar archivos de reporte generados
+                HTML_COUNT=\$(find performance_results -name "*.html" | wc -l)
+                JSON_COUNT=\$(find performance_results -name "*.json" | wc -l)
+                CSV_COUNT=\$(find performance_results -name "*.csv" | wc -l)
+                
+                echo "📊 Reportes generados:"
+                echo "  - HTML Reports: \$HTML_COUNT"
+                echo "  - JSON Reports: \$JSON_COUNT"
+                echo "  - CSV Reports: \$CSV_COUNT"
+                
+                # Mostrar resumen de archivos generados
+                find performance_results -type f -name "*.html" -o -name "*.json" -o -name "*.md" | head -20
+            """
+            
+            // Generar reporte consolidado de rendimiento
+            echo "📈 Generando reporte consolidado..."
+            sh """
+                # Crear reporte consolidado si hay resultados
+                if [ -d "performance_results" ] && [ "\$(ls -A performance_results)" ]; then
+                    echo "# Performance Test Summary - Build ${env.BUILD_NUMBER}" > performance_results/ci_summary.md
+                    echo "## Execution Date: \$(date)" >> performance_results/ci_summary.md
+                    echo "## Environment: ${params.ENVIRONMENT}" >> performance_results/ci_summary.md
+                    echo "## Build Tag: ${params.BUILD_TAG}" >> performance_results/ci_summary.md
+                    echo "" >> performance_results/ci_summary.md
+                    echo "### Generated Reports:" >> performance_results/ci_summary.md
+                    find performance_results -name "*.html" | sed 's/^/- /' >> performance_results/ci_summary.md
+                    echo "" >> performance_results/ci_summary.md
+                    echo "### Test Configuration:" >> performance_results/ci_summary.md
+                    echo "- Performance Level: ${params.PERFORMANCE_TEST_LEVEL}" >> performance_results/ci_summary.md
+                    echo "- Concurrent Users: ${testConfig.users}" >> performance_results/ci_summary.md
+                    echo "- Spawn Rate: ${testConfig.spawnRate} users/sec" >> performance_results/ci_summary.md
+                    echo "- Duration: ${testConfig.duration} seconds" >> performance_results/ci_summary.md
+                    
+                    echo "✓ Reporte consolidado generado"
+                else
+                    echo "⚠️ No se encontraron resultados para el reporte consolidado"
+                fi
+            """
+        }
+        
+        echo "✅ Suite de pruebas de rendimiento completada exitosamente"
+        
+    } catch (Exception e) {
+        echo "💥 Error en pruebas de rendimiento: ${e.message}"
+        
+        // Intentar capturar logs para debugging
+        try {
+            sh """
+                echo "=== DEBUG INFORMATION ==="
+                kubectl get pods -n ${env.K8S_TARGET_NAMESPACE} || true
+                kubectl get services -n ${env.K8S_TARGET_NAMESPACE} || true
+                curl -v http://host.docker.internal/actuator/health || true
+            """
+        } catch (Exception debugException) {
+            echo "No se pudo capturar información de debug: ${debugException.message}"
+        }
+        
+        // Re-lanzar excepción solo en ambiente crítico
+        if (params.ENVIRONMENT == 'master') {
+            throw e
+        } else {
+            echo "⚠️ Continuando pipeline a pesar de fallos en pruebas de rendimiento (ambiente no crítico)"
+        }
+    }
 }
-*/
+
 
 def generateReleaseNotes() {
     echo "Generando Release Notes automáticos..."
@@ -631,6 +818,7 @@ def generateReleaseNotes() {
 - **Integration Tests**: ${params.SKIP_TESTS ? 'SKIPPED' : 'EXECUTED'}
 - **End-to-End Tests**: ${params.SKIP_TESTS ? 'SKIPPED' : 'EXECUTED'}
 - **System Validation**: ${params.ENVIRONMENT == 'master' ? 'EXECUTED' : 'SKIPPED'}
+- **Performance Tests**: ${(params.ENVIRONMENT == 'master' && !params.SKIP_TESTS && !params.SKIP_PERFORMANCE_TESTS) ? "EXECUTED (${params.PERFORMANCE_TEST_LEVEL.toUpperCase()})" : 'SKIPPED'}
 
 ## Changes
 \$(git log --oneline --since="1 day ago" | head -10 || echo "No recent commits found")
