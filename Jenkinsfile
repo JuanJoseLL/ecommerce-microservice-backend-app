@@ -370,7 +370,7 @@ pipeline {
         stage('System Validation Tests') {
             when {
                 allOf {
-                    not { params.SKIP_TESTS }
+                    expression { params.SKIP_TESTS == false }
                     expression { params.ENVIRONMENT == 'master' }
                 }
             }
