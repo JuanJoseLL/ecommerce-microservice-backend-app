@@ -55,6 +55,66 @@
 - **Maven Integration Plugin:** For building Java/Maven projects.
 - **HTML Publisher Plugin:** To publish HTML reports generated during the build (e.g., Locust performance test reports).
 
+### Jenkins Job Configuration
+
+The Jenkins pipeline is configured to monitor the `dev`, `stage`, and `master` branches of the Git repository:
+
+![Branch Configuration in Jenkins Job](images/branch-config-jenkins-ui.png)
+
+When the pipeline is triggered—either manually or automatically—it utilizes several configurable parameters that control the execution flow and target environment:
+
+![Pipeline Execution Parameters in Jenkins](images/pipeline-parameters.png)
+
+These parameters are defined in the `parameters` section of the `Jenkinsfile` and allow for flexible management of the pipeline according to the needs of each environment and deployment scenario.
+
+### Base configuration for Jenkins
+
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'host.docker.internal:5000'
+        K8S_CONTEXT = 'docker-desktop'
+        K8S_TARGET_NAMESPACE = 'ecommerce-app'
+        MAVEN_OPTS = '-Xmx1024m'
+    }
+
+    parameters {
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'stage', 'master'],
+            description: 'Environment to deploy to'
+        )
+        string(
+            name: 'BUILD_TAG',
+            defaultValue: "${env.BUILD_ID}",
+            description: 'Tag para la imagen Docker'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip all tests (emergency deployment only)'
+        )
+        booleanParam(
+            name: 'GENERATE_RELEASE_NOTES',
+            defaultValue: true,
+            description: 'Generate automatic release notes'
+        )
+        choice(
+            name: 'PERFORMANCE_TEST_LEVEL',
+            choices: ['standard', 'light', 'stress'],
+            description: 'Performance test intensity level (only applies in master environment)'
+        )
+        booleanParam(
+            name: 'SKIP_PERFORMANCE_TESTS',
+            defaultValue: false,
+            description: 'Skip performance tests specifically (even in master environment)'
+        )
+    }
+}
+```
+
 ---
 
 ## 4. Development Pipelines (Dev Environment)
@@ -83,7 +143,87 @@
   - **Generate Release Notes**: Automatically generates release notes (if `GENERATE_RELEASE_NOTES` is `true`).
   - **Performance Tests**: Runs performance tests according to the level defined in `PERFORMANCE_TEST_LEVEL` (default `standard`).
 
-  The build, deployment, and other stages may be commented out or enabled depending on the environment and needs. The `ENVIRONMENT` parameter controls pipeline behavior for the `dev`, `stage`, and `master` environments.
+```groovy
+stage('Unit Tests') {
+    when {
+        expression { params.SKIP_TESTS == false }
+    }
+    steps {
+        script {
+            echo "=== UNIT TESTS ==="
+            def microservices = [ /* ... */ ]
+            microservices.each { service ->
+                try {
+                    dir("${env.DOCKERFILE_DIR_ROOT}/${service}") {
+                        sh "./mvnw clean test -Dtest=${testPattern} -DfailIfNoTests=false -Dmaven.test.failure.ignore=true"
+                    }
+                } catch (Exception e) {
+                    echo "❌ Pruebas unitarias fallaron para ${service}: ${e.message}"
+                    if (params.ENVIRONMENT == 'master') {
+                        error "Pruebas unitarias críticas fallaron en ${service}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+Stage of build and package
+
+```groovy
+stage('Build & Package') {
+    steps {
+        script {
+            echo "=== BUILD & PACKAGE ==="
+            def microservices = [ /* ... */ ]
+            microservices.each { service ->
+                try {
+                    echo "Construyendo ${service}..."
+                    dir("${env.DOCKERFILE_DIR_ROOT}/${service}") {
+                        sh "./mvnw clean package -DskipTests"
+                    }
+                } catch (Exception e) {
+                    error "❌ Error construyendo ${service}: ${e.message}"
+                }
+            }
+        }
+    }
+}
+```
+
+Stage of push images
+
+```groovy
+stage('Docker Build & Push') {
+    steps {
+        script {
+            echo "=== DOCKER BUILD & PUSH ==="
+            def microservices = [ /* ... */ ]
+            microservices.each { service ->
+                buildAndPushDockerImage(service, params.BUILD_TAG)
+            }
+        }
+    }
+}
+
+def buildAndPushDockerImage(String serviceName, String buildTag) {
+    echo "Construyendo imagen Docker para ${serviceName}..."
+    def imageName = "${env.DOCKER_REGISTRY}/${serviceName}:${buildTag}"
+    def contextPath = "${env.DOCKERFILE_DIR_ROOT}/${serviceName}"
+    dir(contextPath) {
+        sh "docker build -t ${imageName} ."
+        try {
+            sh "docker push ${imageName}"
+            echo "✓ Imagen ${imageName} subida al registry"
+        } catch (Exception e) {
+            echo "⚠️ No se pudo subir al registry, usando imagen local: ${e.message}"
+        }
+    }
+}
+```
+
+    The build, deployment, and other stages may be commented out or enabled depending on the environment and needs. The `ENVIRONMENT` parameter controls pipeline behavior for the `dev`, `stage`, and `master` environments.
 
 ### `dev` Pipeline Result
 
@@ -152,6 +292,54 @@
   3. `user-service` Response Capacity: (User operations via `proxy-client`).
 - **Configuration:** The Jenkinsfile includes parameters for `PERFORMANCE_TEST_LEVEL` (`standard`, `light`, `stress`) that adjust the number of users, spawn rate, and test duration. The `runPerformanceTests` function handles execution.
 - **Key Metrics:** Response time, throughput (requests/second), error rate.
+
+```groovy
+stage('Performance Tests') {
+    steps {
+        script {
+            echo "=== PERFORMANCE TESTS ==="
+            echo "🎛️ Performance Test Level: ${params.PERFORMANCE_TEST_LEVEL}"
+            try {
+                runPerformanceTests()
+                echo "✓ Pruebas de rendimiento completadas"
+            } catch (Exception e) {
+                echo "⚠️ Pruebas de rendimiento fallaron: ${e.message}"
+                if (params.ENVIRONMENT == 'master') {
+                    error "Pruebas de rendimiento críticas fallaron en ambiente master"
+                }
+            }
+        }
+    }
+    post { 
+        always {
+            archiveArtifacts artifacts: 'performance-tests/performance_results/**/*', allowEmptyArchive: true
+        }
+    }
+}
+
+def runPerformanceTests() {
+    dir('performance-tests') {
+        def testConfig = [:]
+        switch(params.PERFORMANCE_TEST_LEVEL) {
+            case 'light':
+                testConfig = [users: 10, spawnRate: 1, duration: 60]
+                break
+            case 'stress':
+                testConfig = [users: 50, spawnRate: 5, duration: 300]
+                break
+            default: // standard
+                testConfig = [users: 20, spawnRate: 2, duration: 120]
+        }
+        sh """
+            python3 performance_test_suite.py --all \\
+                --users ${testConfig.users} \\
+                --spawn-rate ${testConfig.spawnRate} \\
+                --duration ${testConfig.duration} \\
+                --host http://host.docker.internal || echo "⚠️ Algunas pruebas de rendimiento fallaron"
+        """
+    }
+}
+```
 
 #### Performance Test Results
 
@@ -239,6 +427,39 @@ For each run, the results are available as build artifacts in Jenkins, including
 
 ### `stage` Pipeline Configuration
 
+```groovy
+stage('Deploy Application Services') {
+    steps {
+        script {
+            echo "=== DEPLOY APPLICATION SERVICES ==="
+            def appServices = [ /* ... */ ]
+            appServices.each { service ->
+                deployMicroservice(service, params.BUILD_TAG)
+            }
+        }
+    }
+}
+
+def deployMicroservice(String serviceName, String buildTag) {
+    echo "Desplegando microservicio: ${serviceName}..."
+    def imageName = "${env.DOCKER_REGISTRY}/${serviceName}:${buildTag}"
+    def deploymentFile = "${env.K8S_MANIFESTS_ROOT}/${serviceName}/deployment.yaml"
+    
+    if (fileExists(deploymentFile)) {
+        def processedFile = "processed-${serviceName}-deployment.yaml"
+        def deploymentContent = readFile(deploymentFile)
+        def updatedContent = deploymentContent.replaceAll(
+            /image: .*${serviceName}:.*/,
+            "image: ${imageName}"
+        )
+        writeFile(file: processedFile, text: updatedContent)
+        sh "kubectl apply -f ${processedFile} -n ${env.K8S_TARGET_NAMESPACE}"
+        
+        sh "kubectl rollout status deployment/${serviceName} -n ${env.K8S_TARGET_NAMESPACE} --timeout=300s"
+    }
+}
+```
+
 - **Jenkinsfile text:** The same Jenkinsfile would be used, selecting `ENVIRONMENT=stage`.
 - *Screenshots of the job configuration in Jenkins if specific for `stage` or how the execution is parameterized for `stage`.*
 - *Examples of Kubernetes manifests (Deployment and Service) for a microservice, showing how they are configured for the `ecommerce-app` namespace and the `stage` environment.*
@@ -272,7 +493,37 @@ For each run, the results are available as build artifacts in Jenkins, including
 
 - **Jenkinsfile text:** The same Jenkinsfile would be used, selecting `ENVIRONMENT=master`.
 
+```groovy
+stage('Generate Release Notes') {
+    when {
+        expression { params.GENERATE_RELEASE_NOTES }
+    }
+    steps {
+        script {
+            echo "=== GENERATE RELEASE NOTES ==="
+            generateReleaseNotes()
+        }
+    }
+}
 
+def generateReleaseNotes() {
+    echo "Generando Release Notes automáticos..."
+    def releaseNotesFile = "release-notes-${params.BUILD_TAG}.md"
+    
+    def releaseNotes = """
+# Release Notes - Build ${params.BUILD_TAG}
+
+## Build Information
+- **Build Number**: ${env.BUILD_NUMBER}
+- **Environment**: ${params.ENVIRONMENT}
+
+## Test Results
+- **Unit Tests**: ${params.SKIP_TESTS ? 'SKIPPED' : 'EXECUTED'}
+"""
+    writeFile(file: releaseNotesFile, text: releaseNotes)
+    archiveArtifacts artifacts: releaseNotesFile
+}
+```
 ### Release Notes (Master)
 
 ![Local Kubernetes with Docker Desktop](images/release-notes-all-tests.PNG)
