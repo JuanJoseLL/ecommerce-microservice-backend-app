@@ -311,8 +311,8 @@ pipeline {
                         'user-service',
                         'product-service',
                         'order-service',
-                        'payment-service',
-                        'shipping-service'
+                        'payment-service'
+                        
                     ]
                     
                     microservices.each { service ->
@@ -353,7 +353,7 @@ pipeline {
                         'product-service', 
                         'order-service',
                         'payment-service',
-                        'shipping-service',
+                        
                         'proxy-client',
                         'api-gateway'
                     ]
