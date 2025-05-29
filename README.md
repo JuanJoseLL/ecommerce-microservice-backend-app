@@ -459,10 +459,9 @@ def deployMicroservice(String serviceName, String buildTag) {
     }
 }
 ```
-
+![Local Kubernetes with Docker Desktop](images/master-pipeline-result.png)
 - **Jenkinsfile text:** The same Jenkinsfile would be used, selecting `ENVIRONMENT=stage`.
-- *Screenshots of the job configuration in Jenkins if specific for `stage` or how the execution is parameterized for `stage`.*
-- *Examples of Kubernetes manifests (Deployment and Service) for a microservice, showing how they are configured for the `ecommerce-app` namespace and the `stage` environment.*
+
 
 ### Release Notes (Stage)
 
@@ -492,6 +491,14 @@ def deployMicroservice(String serviceName, String buildTag) {
 ### `master` Pipeline Configuration
 
 - **Jenkinsfile text:** The same Jenkinsfile would be used, selecting `ENVIRONMENT=master`.
+
+### `master` Pipeline Result
+
+![Local Kubernetes with Docker Desktop](images/master-pipeline-result.png)
+![Local Kubernetes with Docker Desktop](images/postjob.png)
+![Local Kubernetes with Docker Desktop](images/master-commit.png)
+
+
 
 ```groovy
 stage('Generate Release Notes') {
