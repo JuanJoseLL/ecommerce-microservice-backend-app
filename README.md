@@ -475,6 +475,9 @@ Production pipeline ensures enterprise-grade reliability through:
 
 **Endpoint Performance Analysis:**
 
+![Development Release Notes](images/LOCUST-CHARTS.png)
+
+
 | Endpoint | Requests | Avg (ms) | P95 (ms) | P99 (ms) | Performance Grade |
 |----------|----------|----------|----------|----------|-------------------|
 | `GET /api/products` | 511 | 28.4 | 100 | 180 | ⭐⭐⭐⭐⭐ Excellent |
@@ -489,6 +492,10 @@ Production pipeline ensures enterprise-grade reliability through:
 - **Load Distribution:** Even load distribution across microservices architecture
 
 ---
+
+![Development Release Notes](images/LOCUST-TEST-REPORT.png)
+
+
 
 ## 5. Release Notes Documentation
 
