@@ -1,10 +1,7 @@
 pipeline {
     agent any
     
-    tools {
-        maven 'Maven-3.8.4' // Ajusta el nombre según tu configuración de Maven en Jenkins
-        jdk 'JDK-11' // Ajusta según tu configuración de JDK en Jenkins
-    }
+   
     
     environment {
         // El ID de las credenciales que mencionaste (TEXT credential)
