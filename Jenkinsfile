@@ -46,9 +46,9 @@ pipeline {
             }
         }
 
-        stage('Detect and Build Microservices') {
+        stage('Detect Services to Build') {
             steps {
-                echo 'Detectando microservicios modificados...'
+                echo 'Detectando microservicios a construir...'
                 script {
                     // Definir microservicios disponibles
                     def microservices = [
@@ -62,11 +62,9 @@ pipeline {
                         'favourite-service'
                     ]
                     
-                    def builtImages = []
+                    def servicesToBuild = []
                     
                     // Detectar cambios (si es commit específico) o construir todos (si es manual)
-                    def changedServices = []
-                    
                     if (env.CHANGE_TARGET) {
                         // Es un PR, detectar cambios
                         def changes = sh(
@@ -74,31 +72,82 @@ pipeline {
                             returnStdout: true
                         ).trim().split('\n')
                         
-                        changedServices = microservices.findAll { service ->
+                        servicesToBuild = microservices.findAll { service ->
                             changes.any { it.startsWith("${service}/") }
                         }
                     } else {
                         // Build manual o push a main, construir servicios específicos
-                        // Puedes parametrizar esto o construir todos
                         def serviceToBuild = params.MICROSERVICE ?: 'ALL'
                         if (serviceToBuild == 'ALL') {
-                            changedServices = microservices
+                            servicesToBuild = microservices
                         } else {
-                            changedServices = [serviceToBuild]
+                            servicesToBuild = [serviceToBuild]
                         }
                     }
                     
-                    if (changedServices.isEmpty()) {
+                    if (servicesToBuild.isEmpty()) {
                         echo "ℹ️  No se detectaron cambios en microservicios"
-                        changedServices = ['user-service'] // Default para testing
+                        servicesToBuild = ['user-service'] // Default para testing
                     }
                     
-                    echo "🔨 Microservicios a construir: ${changedServices.join(', ')}"
+                    echo "🔨 Microservicios a construir: ${servicesToBuild.join(', ')}"
                     
-                    // Construir cada microservicio
-                    for (service in changedServices) {
+                    // Guardar lista de servicios para etapas posteriores
+                    env.SERVICES_TO_BUILD = servicesToBuild.join(',')
+                }
+            }
+        }
+
+        stage('Package Microservices') {
+            steps {
+                echo 'Empaquetando microservicios...'
+                script {
+                    def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
+                    
+                    for (service in servicesToBuild) {
+                        echo "📦 Empaquetando ${service}..."
+                        
+                        // Opción 1: Si cada microservicio tiene su propio pom.xml
+                        if (fileExists("${service}/pom.xml")) {
+                            sh """
+                                cd ${service}
+                                ../mvnw clean package -DskipTests
+                                echo "✅ JAR generado para ${service}"
+                                ls -la target/*.jar || echo "⚠️  No se encontró JAR en target/"
+                            """
+                        } else {
+                            // Opción 2: Si es un proyecto multi-módulo con un pom padre
+                            sh """
+                                ./mvnw clean package -pl ${service} -am -DskipTests
+                                echo "✅ JAR generado para ${service}"
+                                ls -la ${service}/target/*.jar || echo "⚠️  No se encontró JAR en ${service}/target/"
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                echo 'Construyendo imágenes Docker...'
+                script {
+                    def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
+                    def builtImages = []
+                    
+                    for (service in servicesToBuild) {
                         if (fileExists("${service}/Dockerfile")) {
-                            echo "🐳 Construyendo ${service}..."
+                            echo "🐳 Construyendo imagen Docker para ${service}..."
+                            
+                            // Verificar que el JAR existe antes de construir
+                            def jarExists = sh(
+                                script: "ls ${service}/target/*.jar 2>/dev/null | wc -l",
+                                returnStdout: true
+                            ).trim()
+                            
+                            if (jarExists == "0") {
+                                error "❌ No se encontró JAR para ${service}. Verifica que el empaquetado fue exitoso."
+                            }
                             
                             sh """
                                 cd ${service}
@@ -139,6 +188,9 @@ pipeline {
                 }
                 
                 stage('Container Security Scan') {
+                    when {
+                        expression { !params.SKIP_SECURITY_SCAN }
+                    }
                     steps {
                         echo 'Ejecutando escaneo de seguridad con Trivy...'
                         script {
@@ -314,6 +366,9 @@ EOF
         }
         
         stage('Security Policy Check') {
+            when {
+                expression { !params.SKIP_SECURITY_SCAN }
+            }
             steps {
                 echo 'Verificando políticas de seguridad...'
                 script {
@@ -354,20 +409,6 @@ EOF
                         echo "ℹ️  No se encontraron métricas de seguridad para evaluar"
                     }
                 }
-            }
-        }
-        
-        stage('Package') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'develop'
-                }
-            }
-            steps {
-                echo 'Empaquetando aplicación...'
-                sh './mvnw clean package -DskipTests'
             }
         }
         
@@ -417,6 +458,10 @@ EOF
     post {
         always {
             echo 'Pipeline completado'
+            // Limpiar archivos temporales
+            sh """
+                rm -f trivy-*-report.json trivy-*-summary.txt trivy-metrics.properties || true
+            """
         }
         
         success {
