@@ -19,9 +19,6 @@ pipeline {
         SONAR_TOKEN = credentials('SONAR_TOKEN')
         SONAR_HOST_URL = 'http://sonarqube:9000'
         
-        // Configuración de Trivy
-        TRIVY_SERVER_URL = 'http://trivy-server:4954'
-        
         // Configuración de Java
         JAVA_HOME = '/opt/java/openjdk'
         PATH = "${JAVA_HOME}/bin:${env.PATH}"
@@ -137,6 +134,7 @@ pipeline {
                 script {
                     def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
                     def builtImages = []
+                    def localImages = []
                     
                     for (service in servicesToBuild) {
                         if (fileExists("${service}/Dockerfile")) {
@@ -152,70 +150,34 @@ pipeline {
                                 error "❌ No se encontró JAR para ${service}. Verifica que el empaquetado fue exitoso."
                             }
                             
-                            def imageNameWithHub = "${DOCKERHUB_USERNAME}/${service}"
-
-                            // Construyes y etiquetas las imágenes como antes
                             sh """
                                 cd ${service}
+                                # Construir la imagen con tags locales y de Docker Hub
                                 docker build -t ${service}:${env.BUILD_NUMBER} .
                                 docker tag ${service}:${env.BUILD_NUMBER} ${service}:latest
-                                docker tag ${service}:${env.BUILD_NUMBER} ${imageNameWithHub}:${env.BUILD_NUMBER}
-                                docker tag ${service}:${env.BUILD_NUMBER} ${imageNameWithHub}:latest
+                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
+                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:latest
                             """
-
-                            // PERO SOLO AÑADES EL NOMBRE COMPLETO A LA LISTA DE ESCANEO
-                            builtImages.add("${imageNameWithHub}:${env.BUILD_NUMBER}")
-
-                            // ...
-                            env.BUILT_IMAGES = builtImages.join(',')
+                            
+                            // Agregar imagen local para escaneo de seguridad
+                            localImages.add("${service}:${env.BUILD_NUMBER}")
+                            // Agregar imagen de Docker Hub para push
+                            builtImages.add("${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}")
                         } else {
                             echo "⚠️  No se encontró Dockerfile en ${service}/"
                         }
                     }
                     
-                    // Guardar lista de imágenes construidas para etapas posteriores
+                    // Guardar listas de imágenes para etapas posteriores
+                    env.LOCAL_IMAGES = localImages.join(',')
                     env.BUILT_IMAGES = builtImages.join(',')
-                    echo "📦 Imágenes construidas: ${env.BUILT_IMAGES}"
+                    echo "📦 Imágenes locales (para escaneo): ${env.LOCAL_IMAGES}"
+                    echo "📦 Imágenes para push: ${env.BUILT_IMAGES}"
                 }
             }
         }
 
-        stage('Push Docker Images') {
-            steps {
-                echo 'Publicando imágenes Docker en Docker Hub...'
-                script {
-                    def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
-                    
-                    withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS_ID, usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
-                        // Login a Docker Hub
-                        sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
-                        
-                        for (service in servicesToBuild) {
-                            if (fileExists("${service}/Dockerfile")) {
-                                echo "📤 Publicando ${service} en Docker Hub..."
-                                
-                                sh """
-                                    # Push imagen con número de build
-                                    docker push ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
-                                    
-                                    # Push imagen latest
-                                    docker push ${DOCKERHUB_USERNAME}/${service}:latest
-                                    
-                                    echo "✅ ${service} publicado exitosamente"
-                                """
-                            }
-                        }
-                        
-                        // Logout de Docker Hub por seguridad
-                        sh 'docker logout'
-                    }
-                    
-                    echo "🎉 Todas las imágenes han sido publicadas en Docker Hub"
-                }
-            }
-        }
-
-        stage('Code Quality Analysis') {
+        stage('Code Quality and Security Analysis') {
             parallel {
                 stage('SonarQube Analysis') {
                     steps {
@@ -238,53 +200,44 @@ pipeline {
                         expression { !params.SKIP_SECURITY_SCAN }
                     }
                     steps {
-                        echo 'Ejecutando escaneo de seguridad con Trivy...'
+                        echo 'Ejecutando escaneo de seguridad con Trivy (modo standalone)...'
                         script {
-                            def imagesToScan = env.BUILT_IMAGES?.split(',') ?: []
+                            def imagesToScan = env.LOCAL_IMAGES?.split(',') ?: []
                             
                             if (imagesToScan.size() == 0) {
-                                echo "ℹ️  No hay imágenes para escanear"
+                                echo "ℹ️  No hay imágenes locales para escanear"
                                 return
                             }
                             
                             sh """
-                                # Instalar Trivy client si no existe
+                                # Instalar Trivy si no existe
                                 if ! command -v trivy &> /dev/null; then
-                                    echo "📦 Instalando Trivy client..."
+                                    echo "📦 Instalando Trivy..."
                                     curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
                                 fi
                                 
-                                # Verificar conectividad con Trivy server
-                                echo "🔍 Verificando conexión con Trivy server..."
-                                until wget -q --spider ${TRIVY_SERVER_URL}/healthz; do
-                                    echo "⏳ Esperando a que Trivy server esté listo..."
-                                    sleep 5
-                                done
-                                echo "✅ Trivy server está listo!"
+                                echo "✅ Trivy instalado y listo para escaneo local"
                             """
                             
                             def totalCritical = 0
                             def totalHigh = 0
                             def scanResults = []
                             
-                            // Escanear cada imagen construida
+                            // Escanear cada imagen local construida
                             for (image in imagesToScan) {
-                                // Extraer el nombre del servicio correctamente
-                                def imageParts = image.split(':')[0].split('/')
-                                def serviceName = imageParts[-1] // Obtener la última parte (nombre del servicio)
-                                echo "🛡️  Escaneando ${image}..."
+                                // Extraer el nombre del servicio desde imagen local (ej: user-service:123)
+                                def serviceName = image.split(':')[0]
+                                echo "🛡️  Escaneando imagen local ${image}..."
                                 
                                 sh """
                                     # Escaneo completo en formato JSON
-                                    trivy client \
-                                        --remote ${TRIVY_SERVER_URL} \
+                                    trivy image \
                                         --format json \
                                         --output trivy-${serviceName}-report.json \
                                         ${image}
                                     
                                     # Escaneo resumen para consola
-                                    trivy client \
-                                        --remote ${TRIVY_SERVER_URL} \
+                                    trivy image \
                                         --format table \
                                         --output trivy-${serviceName}-summary.txt \
                                         --severity CRITICAL,HIGH \
@@ -329,7 +282,7 @@ pipeline {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Trivy Security Report - Microservices</title>
+    <title>Trivy Security Report - Microservices (Local Scan)</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .service { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
@@ -339,12 +292,13 @@ pipeline {
     </style>
 </head>
 <body>
-    <h1>🛡️ Trivy Security Report - Build ${BUILD_NUMBER}</h1>
+    <h1>🛡️ Trivy Security Report (Local Images) - Build ${BUILD_NUMBER}</h1>
     <div class="summary">
         <h2>📊 Resumen General</h2>
         <p><strong>Servicios escaneados:</strong> ${imagesToScan.size()}</p>
         <p><strong>Total vulnerabilidades críticas:</strong> <span class="critical">${totalCritical}</span></p>
         <p><strong>Total vulnerabilidades altas:</strong> <span class="high">${totalHigh}</span></p>
+        <p><strong>Modo:</strong> Standalone (imágenes locales)</p>
         <p><strong>Fecha:</strong> ${new Date()}</p>
     </div>
 EOF
@@ -356,7 +310,7 @@ EOF
 cat >> trivy-consolidated-report.html << 'EOF'
     <div class="service">
         <h3>🚀 ${result.service}</h3>
-        <p><strong>Imagen:</strong> ${result.image}</p>
+        <p><strong>Imagen local:</strong> ${result.image}</p>
         <p><strong>Vulnerabilidades críticas:</strong> <span class="critical">${result.critical}</span></p>
         <p><strong>Vulnerabilidades altas:</strong> <span class="high">${result.high}</span></p>
         <a href="trivy-${result.service}-report.json" target="_blank">Ver reporte detallado JSON</a>
@@ -367,18 +321,22 @@ EOF
                             
                             sh 'echo "</body></html>" >> trivy-consolidated-report.html'
                             
-                            echo "📈 Resumen final:"
+                            echo "📈 Resumen final del escaneo local:"
                             echo "   - Total servicios: ${imagesToScan.size()}"
                             echo "   - Total vulnerabilidades críticas: ${totalCritical}"
                             echo "   - Total vulnerabilidades altas: ${totalHigh}"
                             
-                            // Política de seguridad
+                            // Política de seguridad - fallar si hay vulnerabilidades críticas
                             if (totalCritical > 0) {
                                 echo "❌ ADVERTENCIA: Se encontraron ${totalCritical} vulnerabilidades críticas en total"
+                                echo "🚫 Considerando fallar el build por política de seguridad..."
+                                // Descomentar para fallar el build:
+                                // error("Build fallido por vulnerabilidades críticas detectadas")
                             }
                             
                             if (totalHigh > 20) {
                                 echo "⚠️  ADVERTENCIA: Se encontraron ${totalHigh} vulnerabilidades altas en total (límite recomendado: 20)"
+                                currentBuild.result = 'UNSTABLE'
                             }
                         }
                     }
@@ -391,7 +349,7 @@ EOF
                                 keepAll: true,
                                 reportDir: '.',
                                 reportFiles: 'trivy-consolidated-report.html',
-                                reportName: 'Trivy Security Report'
+                                reportName: 'Trivy Security Report (Local)'
                             ])
                             
                             // Archivar todos los reportes
@@ -400,6 +358,41 @@ EOF
                                            allowEmptyArchive: true
                         }
                     }
+                }
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                echo 'Publicando imágenes Docker en Docker Hub...'
+                script {
+                    def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
+                    
+                    withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS_ID, usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
+                        // Login a Docker Hub
+                        sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
+                        
+                        for (service in servicesToBuild) {
+                            if (fileExists("${service}/Dockerfile")) {
+                                echo "📤 Publicando ${service} en Docker Hub..."
+                                
+                                sh """
+                                    # Push imagen con número de build
+                                    docker push ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
+                                    
+                                    # Push imagen latest
+                                    docker push ${DOCKERHUB_USERNAME}/${service}:latest
+                                    
+                                    echo "✅ ${service} publicado exitosamente"
+                                """
+                            }
+                        }
+                        
+                        // Logout de Docker Hub por seguridad
+                        sh 'docker logout'
+                    }
+                    
+                    echo "🎉 Todas las imágenes han sido publicadas en Docker Hub"
                 }
             }
         }
