@@ -196,7 +196,7 @@ pipeline {
                         script {
                             def imagesToScan = env.BUILT_IMAGES?.split(',') ?: []
                             
-                            if (imagesToScan.isEmpty()) {
+                            if (imagesToScan.size() == 0) {
                                 echo "ℹ️  No hay imágenes para escanear"
                                 return
                             }
@@ -418,7 +418,7 @@ EOF
                 script {
                     def imagesToClean = env.BUILT_IMAGES?.split(',') ?: []
                     
-                    if (imagesToClean.isEmpty()) {
+                    if (imagesToClean.size() == 0) {
                         echo "ℹ️  No hay imágenes para limpiar"
                         return
                     }
