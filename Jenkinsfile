@@ -229,14 +229,14 @@ pipeline {
                                 sh """
                                     # Escaneo completo en formato JSON
                                     trivy client \
-                                        --server ${TRIVY_SERVER_URL} \
+                                        --remote ${TRIVY_SERVER_URL} \
                                         --format json \
                                         --output trivy-${serviceName}-report.json \
                                         ${image}
                                     
                                     # Escaneo resumen para consola
                                     trivy client \
-                                        --server ${TRIVY_SERVER_URL} \
+                                        --remote ${TRIVY_SERVER_URL} \
                                         --format table \
                                         --output trivy-${serviceName}-summary.txt \
                                         --severity CRITICAL,HIGH \
