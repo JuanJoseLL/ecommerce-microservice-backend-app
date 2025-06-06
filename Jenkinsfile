@@ -29,6 +29,9 @@ pipeline {
         // Configuración de la aplicación
         APP_NAME = 'ecommerce-microservice-backend'
         DOCKER_IMAGE = "${APP_NAME}:${env.BUILD_NUMBER}"
+
+        DOCKERHUB_USERNAME = 'j2loop' 
+        DOCKERHUB_CREDENTIALS_ID = 'DOCKERHUB_CREDENTIALS' // El ID de la credencial que creaste en Jenkins
     }
 
     stages {
@@ -151,12 +154,15 @@ pipeline {
                             
                             sh """
                                 cd ${service}
-                                # Construir la imagen
+                                # Construir la imagen con tags de Docker Hub
                                 docker build -t ${service}:${env.BUILD_NUMBER} .
                                 docker tag ${service}:${env.BUILD_NUMBER} ${service}:latest
+                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
+                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:latest
                             """
                             
                             builtImages.add("${service}:${env.BUILD_NUMBER}")
+                            builtImages.add("${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}")
                         } else {
                             echo "⚠️  No se encontró Dockerfile en ${service}/"
                         }
@@ -165,6 +171,41 @@ pipeline {
                     // Guardar lista de imágenes construidas para etapas posteriores
                     env.BUILT_IMAGES = builtImages.join(',')
                     echo "📦 Imágenes construidas: ${env.BUILT_IMAGES}"
+                }
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                echo 'Publicando imágenes Docker en Docker Hub...'
+                script {
+                    def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
+                    
+                    withCredentials([usernamePassword(credentialsId: env.DOCKERHUB_CREDENTIALS_ID, usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
+                        // Login a Docker Hub
+                        sh 'echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin'
+                        
+                        for (service in servicesToBuild) {
+                            if (fileExists("${service}/Dockerfile")) {
+                                echo "📤 Publicando ${service} en Docker Hub..."
+                                
+                                sh """
+                                    # Push imagen con número de build
+                                    docker push ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
+                                    
+                                    # Push imagen latest
+                                    docker push ${DOCKERHUB_USERNAME}/${service}:latest
+                                    
+                                    echo "✅ ${service} publicado exitosamente"
+                                """
+                            }
+                        }
+                        
+                        // Logout de Docker Hub por seguridad
+                        sh 'docker logout'
+                    }
+                    
+                    echo "🎉 Todas las imágenes han sido publicadas en Docker Hub"
                 }
             }
         }
