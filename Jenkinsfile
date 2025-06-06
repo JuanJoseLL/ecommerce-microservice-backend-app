@@ -1,14 +1,14 @@
 pipeline {
     agent any
-    
+
     environment {
         // El ID de las credenciales que mencionaste (TEXT credential)
-        SONAR_TOKEN = credentials('SONAR_TOKEN') // Ajusta el ID según como lo nombraste
-        SONAR_HOST_URL = 'http://localhost:9000' // Ajusta la URL de tu SonarQube
+        SONAR_TOKEN = credentials('sonarqube-token') // Asegúrate que este ID exista en Jenkins
+        SONAR_HOST_URL = 'http://localhost:9000'    // Ajusta la URL de tu SonarQube
         JAVA_HOME = '/opt/java/openjdk'
         PATH = "${JAVA_HOME}/bin:${env.PATH}"
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
@@ -16,15 +16,14 @@ pipeline {
                 checkout scm
             }
         }
-        
+
         stage('Compile') {
             steps {
                 echo 'Compilando el proyecto...'
-                // Usar el wrapper de Maven que viene con el proyecto
                 sh './mvnw clean compile'
             }
         }
-        
+
         stage('SonarQube Analysis') {
             steps {
                 echo 'Ejecutando análisis de SonarQube...'
@@ -40,7 +39,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Quality Gate') {
             steps {
                 echo 'Esperando resultado del Quality Gate...'
@@ -50,13 +49,14 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             echo 'Pipeline completado'
+            // 👇 THIS IS THE CORRECTED BLOCK
             node {
-            cleanWs() // Limpia el workspace
-        }
+                cleanWs() // Limpia el workspace dentro de un 'node'
+            }
         }
         success {
             echo 'Análisis de SonarQube completado exitosamente!'
