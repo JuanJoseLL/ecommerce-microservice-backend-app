@@ -383,15 +383,17 @@ EOF
             echo 'Pipeline completado'
             
             // Limpiar imágenes Docker locales para ahorrar espacio
-            script {
-                def imagesToClean = env.BUILT_IMAGES?.split(',') ?: []
-                for (image in imagesToClean) {
-                    sh "docker rmi ${image} || true"
-                    def serviceName = image.split(':')[0]
-                    sh "docker rmi ${serviceName}:latest || true"
+            node {
+                script {
+                    def imagesToClean = env.BUILT_IMAGES?.split(',') ?: []
+                    for (image in imagesToClean) {
+                        sh "docker rmi ${image} || true"
+                        def serviceName = image.split(':')[0]
+                        sh "docker rmi ${serviceName}:latest || true"
+                    }
+                    sh "docker image prune -f || true"
                 }
-                sh "docker image prune -f || true"
-            }
+        }
         }
         
         success {
