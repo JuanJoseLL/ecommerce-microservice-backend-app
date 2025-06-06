@@ -3,7 +3,7 @@ pipeline {
     
     environment {
         // El ID de las credenciales que mencionaste (TEXT credential)
-        SONAR_TOKEN = credentials('sonarqube-token') // Ajusta el ID según como lo nombraste
+        SONAR_TOKEN = credentials('SONAR_TOKEN') // Ajusta el ID según como lo nombraste
         SONAR_HOST_URL = 'http://localhost:9000' // Ajusta la URL de tu SonarQube
         JAVA_HOME = '/opt/java/openjdk'
         PATH = "${JAVA_HOME}/bin:${env.PATH}"
@@ -54,7 +54,9 @@ pipeline {
     post {
         always {
             echo 'Pipeline completado'
+            node {
             cleanWs() // Limpia el workspace
+        }
         }
         success {
             echo 'Análisis de SonarQube completado exitosamente!'
