@@ -54,9 +54,7 @@ pipeline {
         always {
             echo 'Pipeline completado'
             // 👇 THIS IS THE CORRECTED BLOCK
-            node {
-                cleanWs() // Limpia el workspace dentro de un 'node'
-            }
+           
         }
         success {
             echo 'Análisis de SonarQube completado exitosamente!'
