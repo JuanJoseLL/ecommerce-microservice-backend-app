@@ -264,7 +264,9 @@ pipeline {
                             
                             // Escanear cada imagen construida
                             for (image in imagesToScan) {
-                                def serviceName = image.split(':')[0]
+                                // Extraer el nombre del servicio correctamente
+                                def imageParts = image.split(':')[0].split('/')
+                                def serviceName = imageParts[-1] // Obtener la última parte (nombre del servicio)
                                 echo "🛡️  Escaneando ${image}..."
                                 
                                 sh """
@@ -467,7 +469,9 @@ EOF
                     echo "🧹 Limpiando ${imagesToClean.size()} imágenes construidas..."
                     
                     for (image in imagesToClean) {
-                        def serviceName = image.split(':')[0]
+                        // Extraer el nombre del servicio correctamente
+                        def imageParts = image.split(':')[0].split('/')
+                        def serviceName = imageParts[-1] // Obtener la última parte (nombre del servicio)
                         echo "🗑️  Limpiando ${image}..."
                         
                         sh """
