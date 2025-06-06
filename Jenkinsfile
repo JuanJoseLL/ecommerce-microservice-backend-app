@@ -152,17 +152,22 @@ pipeline {
                                 error "❌ No se encontró JAR para ${service}. Verifica que el empaquetado fue exitoso."
                             }
                             
+                            def imageNameWithHub = "${DOCKERHUB_USERNAME}/${service}"
+
+                            // Construyes y etiquetas las imágenes como antes
                             sh """
                                 cd ${service}
-                                # Construir la imagen con tags de Docker Hub
                                 docker build -t ${service}:${env.BUILD_NUMBER} .
                                 docker tag ${service}:${env.BUILD_NUMBER} ${service}:latest
-                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
-                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:latest
+                                docker tag ${service}:${env.BUILD_NUMBER} ${imageNameWithHub}:${env.BUILD_NUMBER}
+                                docker tag ${service}:${env.BUILD_NUMBER} ${imageNameWithHub}:latest
                             """
-                            
-                            builtImages.add("${service}:${env.BUILD_NUMBER}")
-                            builtImages.add("${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}")
+
+                            // PERO SOLO AÑADES EL NOMBRE COMPLETO A LA LISTA DE ESCANEO
+                            builtImages.add("${imageNameWithHub}:${env.BUILD_NUMBER}")
+
+                            // ...
+                            env.BUILT_IMAGES = builtImages.join(',')
                         } else {
                             echo "⚠️  No se encontró Dockerfile en ${service}/"
                         }
