@@ -376,24 +376,53 @@ EOF
                 sh './mvnw clean package -DskipTests'
             }
         }
+        
+        stage('Docker Cleanup') {
+            steps {
+                echo 'Limpiando recursos Docker...'
+                script {
+                    def imagesToClean = env.BUILT_IMAGES?.split(',') ?: []
+                    
+                    if (imagesToClean.isEmpty()) {
+                        echo "ℹ️  No hay imágenes para limpiar"
+                        return
+                    }
+                    
+                    echo "🧹 Limpiando ${imagesToClean.size()} imágenes construidas..."
+                    
+                    for (image in imagesToClean) {
+                        def serviceName = image.split(':')[0]
+                        echo "🗑️  Limpiando ${image}..."
+                        
+                        sh """
+                            # Remover imagen con tag del build
+                            docker rmi ${image} || echo "⚠️  No se pudo remover ${image}"
+                            
+                            # Remover imagen con tag latest
+                            docker rmi ${serviceName}:latest || echo "⚠️  No se pudo remover ${serviceName}:latest"
+                        """
+                    }
+                    
+                    // Limpiar imágenes huérfanas y sin usar
+                    echo "🧹 Limpiando imágenes sin usar..."
+                    sh """
+                        # Remover imágenes sin usar (dangling)
+                        docker image prune -f || echo "⚠️  No se pudo ejecutar image prune"
+                        
+                        # Mostrar espacio liberado
+                        echo "📊 Estado actual de Docker:"
+                        docker system df || echo "⚠️  No se pudo obtener información del sistema Docker"
+                    """
+                    
+                    echo "✅ Limpieza Docker completada"
+                }
+            }
+        }
     }
 
     post {
         always {
             echo 'Pipeline completado'
-            
-            // Limpiar imágenes Docker locales para ahorrar espacio
-            node {
-                script {
-                    def imagesToClean = env.BUILT_IMAGES?.split(',') ?: []
-                    for (image in imagesToClean) {
-                        sh "docker rmi ${image} || true"
-                        def serviceName = image.split(':')[0]
-                        sh "docker rmi ${serviceName}:latest || true"
-                    }
-                    sh "docker image prune -f || true"
-                }
-        }
         }
         
         success {
