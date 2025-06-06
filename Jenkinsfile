@@ -1,6 +1,19 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(
+            name: 'MICROSERVICE',
+            choices: ['ALL', 'api-gateway', 'service-discovery', 'user-service', 'product-service', 'order-service', 'payment-service', 'shipping-service', 'favourite-service'],
+            description: 'Seleccionar microservicio específico o ALL para todos'
+        )
+        booleanParam(
+            name: 'SKIP_SECURITY_SCAN',
+            defaultValue: false,
+            description: 'Saltar escaneo de seguridad con Trivy'
+        )
+    }
+
     environment {
         // Credenciales y configuración existente
         SONAR_TOKEN = credentials('SONAR_TOKEN')
@@ -33,27 +46,76 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Detect and Build Microservices') {
             steps {
-                echo 'Construyendo imagen Docker...'
+                echo 'Detectando microservicios modificados...'
                 script {
-                    sh """
-                        # Asegurar que tenemos un Dockerfile
-                        if [ ! -f Dockerfile ]; then
-                            echo "⚠️  No se encontró Dockerfile, creando uno básico..."
-                            cat > Dockerfile << 'EOF'
-FROM openjdk:11-jre-slim
-WORKDIR /app
-COPY target/*.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EOF
-                        fi
+                    // Definir microservicios disponibles
+                    def microservices = [
+                        'api-gateway',
+                        'service-discovery', 
+                        'user-service',
+                        'product-service',
+                        'order-service',
+                        'payment-service',
+                        'shipping-service',
+                        'favourite-service'
+                    ]
+                    
+                    def builtImages = []
+                    
+                    // Detectar cambios (si es commit específico) o construir todos (si es manual)
+                    def changedServices = []
+                    
+                    if (env.CHANGE_TARGET) {
+                        // Es un PR, detectar cambios
+                        def changes = sh(
+                            script: "git diff --name-only origin/${env.CHANGE_TARGET}...HEAD",
+                            returnStdout: true
+                        ).trim().split('\n')
                         
-                        # Construir imagen
-                        docker build -t ${DOCKER_IMAGE} .
-                        docker tag ${DOCKER_IMAGE} ${APP_NAME}:latest
-                    """
+                        changedServices = microservices.findAll { service ->
+                            changes.any { it.startsWith("${service}/") }
+                        }
+                    } else {
+                        // Build manual o push a main, construir servicios específicos
+                        // Puedes parametrizar esto o construir todos
+                        def serviceToBuild = params.MICROSERVICE ?: 'ALL'
+                        if (serviceToBuild == 'ALL') {
+                            changedServices = microservices
+                        } else {
+                            changedServices = [serviceToBuild]
+                        }
+                    }
+                    
+                    if (changedServices.isEmpty()) {
+                        echo "ℹ️  No se detectaron cambios en microservicios"
+                        changedServices = ['user-service'] // Default para testing
+                    }
+                    
+                    echo "🔨 Microservicios a construir: ${changedServices.join(', ')}"
+                    
+                    // Construir cada microservicio
+                    for (service in changedServices) {
+                        if (fileExists("${service}/Dockerfile")) {
+                            echo "🐳 Construyendo ${service}..."
+                            
+                            sh """
+                                cd ${service}
+                                # Construir la imagen
+                                docker build -t ${service}:${env.BUILD_NUMBER} .
+                                docker tag ${service}:${env.BUILD_NUMBER} ${service}:latest
+                            """
+                            
+                            builtImages.add("${service}:${env.BUILD_NUMBER}")
+                        } else {
+                            echo "⚠️  No se encontró Dockerfile en ${service}/"
+                        }
+                    }
+                    
+                    // Guardar lista de imágenes construidas para etapas posteriores
+                    env.BUILT_IMAGES = builtImages.join(',')
+                    echo "📦 Imágenes construidas: ${env.BUILT_IMAGES}"
                 }
             }
         }
@@ -80,6 +142,13 @@ EOF
                     steps {
                         echo 'Ejecutando escaneo de seguridad con Trivy...'
                         script {
+                            def imagesToScan = env.BUILT_IMAGES?.split(',') ?: []
+                            
+                            if (imagesToScan.isEmpty()) {
+                                echo "ℹ️  No hay imágenes para escanear"
+                                return
+                            }
+                            
                             sh """
                                 # Instalar Trivy client si no existe
                                 if ! command -v trivy &> /dev/null; then
@@ -94,87 +163,139 @@ EOF
                                     sleep 5
                                 done
                                 echo "✅ Trivy server está listo!"
-                                
-                                # Ejecutar escaneo de vulnerabilidades
-                                echo "🛡️  Iniciando escaneo de seguridad..."
-                                
-                                # Escaneo completo en formato JSON
-                                trivy client \
-                                    --server ${TRIVY_SERVER_URL} \
-                                    --format json \
-                                    --output trivy-report.json \
-                                    ${DOCKER_IMAGE}
-                                
-                                # Escaneo solo vulnerabilidades críticas y altas para decisión de pipeline
-                                trivy client \
-                                    --server ${TRIVY_SERVER_URL} \
-                                    --format table \
-                                    --output trivy-summary.txt \
-                                    --severity CRITICAL,HIGH \
-                                    ${DOCKER_IMAGE}
-                                
-                                # Mostrar resumen en consola
-                                echo "📊 Resumen de vulnerabilidades:"
-                                cat trivy-summary.txt
-                                
-                                # Contar vulnerabilidades críticas
-                                CRITICAL_COUNT=\$(cat trivy-report.json | jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL") | .VulnerabilityID' | wc -l)
-                                HIGH_COUNT=\$(cat trivy-report.json | jq '.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH") | .VulnerabilityID' | wc -l)
-                                
-                                echo "🔴 Vulnerabilidades CRÍTICAS encontradas: \$CRITICAL_COUNT"
-                                echo "🟠 Vulnerabilidades ALTAS encontradas: \$HIGH_COUNT"
-                                
-                                # Crear archivo de métricas para Jenkins
-                                echo "CRITICAL_VULNS=\$CRITICAL_COUNT" > trivy-metrics.properties
-                                echo "HIGH_VULNS=\$HIGH_COUNT" >> trivy-metrics.properties
-                                
-                                # Política de seguridad (ajusta según tus necesidades)
-                                if [ \$CRITICAL_COUNT -gt 0 ]; then
-                                    echo "❌ ADVERTENCIA: Se encontraron \$CRITICAL_COUNT vulnerabilidades críticas"
-                                    echo "🔒 Considera revisar estas vulnerabilidades antes del despliegue"
-                                    # Descomenta la siguiente línea para fallar el build con vulnerabilidades críticas
-                                    # exit 1
-                                fi
-                                
-                                if [ \$HIGH_COUNT -gt 10 ]; then
-                                    echo "⚠️  ADVERTENCIA: Se encontraron \$HIGH_COUNT vulnerabilidades altas (límite recomendado: 10)"
-                                fi
-                                
-                                echo "✅ Escaneo de seguridad completado"
                             """
+                            
+                            def totalCritical = 0
+                            def totalHigh = 0
+                            def scanResults = []
+                            
+                            // Escanear cada imagen construida
+                            for (image in imagesToScan) {
+                                def serviceName = image.split(':')[0]
+                                echo "🛡️  Escaneando ${image}..."
+                                
+                                sh """
+                                    # Escaneo completo en formato JSON
+                                    trivy client \
+                                        --server ${TRIVY_SERVER_URL} \
+                                        --format json \
+                                        --output trivy-${serviceName}-report.json \
+                                        ${image}
+                                    
+                                    # Escaneo resumen para consola
+                                    trivy client \
+                                        --server ${TRIVY_SERVER_URL} \
+                                        --format table \
+                                        --output trivy-${serviceName}-summary.txt \
+                                        --severity CRITICAL,HIGH \
+                                        ${image}
+                                    
+                                    echo "📊 Resumen de ${serviceName}:"
+                                    cat trivy-${serviceName}-summary.txt || echo "No hay vulnerabilidades críticas/altas"
+                                """
+                                
+                                // Contar vulnerabilidades para este servicio
+                                def criticalCount = sh(
+                                    script: "cat trivy-${serviceName}-report.json | jq '.Results[]?.Vulnerabilities[]? | select(.Severity==\"CRITICAL\") | .VulnerabilityID' | wc -l",
+                                    returnStdout: true
+                                ).trim() as Integer
+                                
+                                def highCount = sh(
+                                    script: "cat trivy-${serviceName}-report.json | jq '.Results[]?.Vulnerabilities[]? | select(.Severity==\"HIGH\") | .VulnerabilityID' | wc -l",
+                                    returnStdout: true
+                                ).trim() as Integer
+                                
+                                totalCritical += criticalCount
+                                totalHigh += highCount
+                                
+                                scanResults.add([
+                                    service: serviceName,
+                                    image: image,
+                                    critical: criticalCount,
+                                    high: highCount
+                                ])
+                                
+                                echo "🔴 ${serviceName} - Críticas: ${criticalCount}, Altas: ${highCount}"
+                            }
+                            
+                            // Generar reporte consolidado
+                            sh """
+                                echo "TOTAL_CRITICAL_VULNS=${totalCritical}" > trivy-metrics.properties
+                                echo "TOTAL_HIGH_VULNS=${totalHigh}" >> trivy-metrics.properties
+                                echo "SCANNED_SERVICES=${imagesToScan.size()}" >> trivy-metrics.properties
+                                
+                                # Crear reporte consolidado HTML
+                                cat > trivy-consolidated-report.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Trivy Security Report - Microservices</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .service { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .critical { color: #d32f2f; font-weight: bold; }
+        .high { color: #f57c00; font-weight: bold; }
+        .summary { background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Trivy Security Report - Build ${BUILD_NUMBER}</h1>
+    <div class="summary">
+        <h2>📊 Resumen General</h2>
+        <p><strong>Servicios escaneados:</strong> ${imagesToScan.size()}</p>
+        <p><strong>Total vulnerabilidades críticas:</strong> <span class="critical">${totalCritical}</span></p>
+        <p><strong>Total vulnerabilidades altas:</strong> <span class="high">${totalHigh}</span></p>
+        <p><strong>Fecha:</strong> ${new Date()}</p>
+    </div>
+EOF
+                            """
+                            
+                            // Agregar detalles de cada servicio al HTML
+                            for (result in scanResults) {
+                                sh """
+cat >> trivy-consolidated-report.html << 'EOF'
+    <div class="service">
+        <h3>🚀 ${result.service}</h3>
+        <p><strong>Imagen:</strong> ${result.image}</p>
+        <p><strong>Vulnerabilidades críticas:</strong> <span class="critical">${result.critical}</span></p>
+        <p><strong>Vulnerabilidades altas:</strong> <span class="high">${result.high}</span></p>
+        <a href="trivy-${result.service}-report.json" target="_blank">Ver reporte detallado JSON</a>
+    </div>
+EOF
+                                """
+                            }
+                            
+                            sh 'echo "</body></html>" >> trivy-consolidated-report.html'
+                            
+                            echo "📈 Resumen final:"
+                            echo "   - Total servicios: ${imagesToScan.size()}"
+                            echo "   - Total vulnerabilidades críticas: ${totalCritical}"
+                            echo "   - Total vulnerabilidades altas: ${totalHigh}"
+                            
+                            // Política de seguridad
+                            if (totalCritical > 0) {
+                                echo "❌ ADVERTENCIA: Se encontraron ${totalCritical} vulnerabilidades críticas en total"
+                            }
+                            
+                            if (totalHigh > 20) {
+                                echo "⚠️  ADVERTENCIA: Se encontraron ${totalHigh} vulnerabilidades altas en total (límite recomendado: 20)"
+                            }
                         }
                     }
                     post {
                         always {
-                            // Publicar reporte HTML de Trivy
-                            script {
-                                // Generar reporte HTML si existe el archivo JSON
-                                sh '''
-                                    if [ -f trivy-report.json ]; then
-                                        echo "📄 Generando reporte HTML..."
-                                        # Usar template HTML simple
-                                        trivy client \
-                                            --server ${TRIVY_SERVER_URL} \
-                                            --format template \
-                                            --template '@contrib/html.tpl' \
-                                            --output trivy-report.html \
-                                            ${DOCKER_IMAGE} || echo "No se pudo generar HTML, usando JSON"
-                                    fi
-                                '''
-                            }
-                            
-                            // Publicar reportes
+                            // Publicar reporte consolidado
                             publishHTML([
                                 allowMissing: true,
                                 alwaysLinkToLastBuild: true,
                                 keepAll: true,
                                 reportDir: '.',
-                                reportFiles: 'trivy-report.html',
+                                reportFiles: 'trivy-consolidated-report.html',
                                 reportName: 'Trivy Security Report'
                             ])
                             
-                            // Archivar reportes para análisis posterior
-                            archiveArtifacts artifacts: 'trivy-*.json,trivy-*.txt,trivy-metrics.properties', 
+                            // Archivar todos los reportes
+                            archiveArtifacts artifacts: 'trivy-*-report.json,trivy-*-summary.txt,trivy-metrics.properties,trivy-consolidated-report.html', 
                                            fingerprint: true, 
                                            allowEmptyArchive: true
                         }
@@ -197,27 +318,41 @@ EOF
                 echo 'Verificando políticas de seguridad...'
                 script {
                     // Leer métricas de Trivy
-                    def props = readProperties file: 'trivy-metrics.properties'
-                    def criticalVulns = props.CRITICAL_VULNS as Integer
-                    def highVulns = props.HIGH_VULNS as Integer
-                    
-                    echo "📊 Métricas de seguridad:"
-                    echo "   - Vulnerabilidades críticas: ${criticalVulns}"
-                    echo "   - Vulnerabilidades altas: ${highVulns}"
-                    
-                    // Definir políticas (ajusta según tus necesidades)
-                    if (criticalVulns > 0) {
-                        echo "⚠️  POLÍTICA: Se encontraron vulnerabilidades críticas"
-                        // currentBuild.result = 'UNSTABLE'  // Marca como inestable
-                        // error("Build fallido por vulnerabilidades críticas") // Falla el build
+                    if (fileExists('trivy-metrics.properties')) {
+                        def props = readProperties file: 'trivy-metrics.properties'
+                        def totalCriticalVulns = props.TOTAL_CRITICAL_VULNS as Integer
+                        def totalHighVulns = props.TOTAL_HIGH_VULNS as Integer
+                        def scannedServices = props.SCANNED_SERVICES as Integer
+                        
+                        echo "📊 Métricas de seguridad consolidadas:"
+                        echo "   - Servicios escaneados: ${scannedServices}"
+                        echo "   - Total vulnerabilidades críticas: ${totalCriticalVulns}"
+                        echo "   - Total vulnerabilidades altas: ${totalHighVulns}"
+                        
+                        // Definir políticas (ajusta según tus necesidades)
+                        if (totalCriticalVulns > 0) {
+                            echo "⚠️  POLÍTICA: Se encontraron ${totalCriticalVulns} vulnerabilidades críticas en ${scannedServices} servicios"
+                            // currentBuild.result = 'UNSTABLE'  // Marca como inestable
+                            // error("Build fallido por vulnerabilidades críticas") // Falla el build
+                        }
+                        
+                        if (totalHighVulns > 30) {
+                            echo "⚠️  POLÍTICA: Demasiadas vulnerabilidades altas (${totalHighVulns} > 30) en todos los servicios"
+                            currentBuild.result = 'UNSTABLE'
+                        }
+                        
+                        // Política por promedio de servicios
+                        def avgCritical = totalCriticalVulns / scannedServices
+                        def avgHigh = totalHighVulns / scannedServices
+                        
+                        echo "📈 Promedio por servicio:"
+                        echo "   - Críticas: ${avgCritical.round(2)}"
+                        echo "   - Altas: ${avgHigh.round(2)}"
+                        
+                        echo "✅ Verificación de políticas completada"
+                    } else {
+                        echo "ℹ️  No se encontraron métricas de seguridad para evaluar"
                     }
-                    
-                    if (highVulns > 15) {
-                        echo "⚠️  POLÍTICA: Demasiadas vulnerabilidades altas (${highVulns} > 15)"
-                        currentBuild.result = 'UNSTABLE'
-                    }
-                    
-                    echo "✅ Verificación de políticas completada"
                 }
             }
         }
@@ -242,11 +377,15 @@ EOF
             echo 'Pipeline completado'
             
             // Limpiar imágenes Docker locales para ahorrar espacio
-            sh """
-                docker rmi ${DOCKER_IMAGE} || true
-                docker rmi ${APP_NAME}:latest || true
-                docker image prune -f || true
-            """
+            script {
+                def imagesToClean = env.BUILT_IMAGES?.split(',') ?: []
+                for (image in imagesToClean) {
+                    sh "docker rmi ${image} || true"
+                    def serviceName = image.split(':')[0]
+                    sh "docker rmi ${serviceName}:latest || true"
+                }
+                sh "docker image prune -f || true"
+            }
         }
         
         success {
@@ -256,8 +395,9 @@ EOF
                 if (fileExists('trivy-metrics.properties')) {
                     def props = readProperties file: 'trivy-metrics.properties'
                     echo "📊 Resumen final de seguridad:"
-                    echo "   - Vulnerabilidades críticas: ${props.CRITICAL_VULNS}"
-                    echo "   - Vulnerabilidades altas: ${props.HIGH_VULNS}"
+                    echo "   - Servicios escaneados: ${props.SCANNED_SERVICES ?: 0}"
+                    echo "   - Total vulnerabilidades críticas: ${props.TOTAL_CRITICAL_VULNS ?: 0}"
+                    echo "   - Total vulnerabilidades altas: ${props.TOTAL_HIGH_VULNS ?: 0}"
                 }
             }
         }
