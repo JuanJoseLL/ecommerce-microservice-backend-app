@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: service-discovery
-        image: eureka:1
+        image: minichocolate/service-discovery:latest
         ports:
         - containerPort: 8761
         resources:

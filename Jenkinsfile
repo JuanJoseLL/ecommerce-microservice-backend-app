@@ -53,7 +53,7 @@ pipeline {
     post {
         always {
             echo 'Pipeline completado'
-            // 👇 THIS IS THE CORRECTED BLOCK
+            
            
         }
         success {
