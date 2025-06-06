@@ -1,12 +1,12 @@
 pipeline {
     agent any
     
-   
-    
     environment {
         // El ID de las credenciales que mencionaste (TEXT credential)
-        SONAR_TOKEN = credentials('SONAR_TOKEN') // Ajusta el ID según como lo nombraste
+        SONAR_TOKEN = credentials('sonarqube-token') // Ajusta el ID según como lo nombraste
         SONAR_HOST_URL = 'http://localhost:9000' // Ajusta la URL de tu SonarQube
+        JAVA_HOME = '/opt/java/openjdk'
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
     }
     
     stages {
@@ -20,7 +20,8 @@ pipeline {
         stage('Compile') {
             steps {
                 echo 'Compilando el proyecto...'
-                sh 'mvn clean compile'
+                // Usar el wrapper de Maven que viene con el proyecto
+                sh './mvnw clean compile'
             }
         }
         
@@ -29,7 +30,7 @@ pipeline {
                 echo 'Ejecutando análisis de SonarQube...'
                 withSonarQubeEnv('SonarQube-Server') { // Ajusta el nombre según tu configuración en Jenkins
                     sh """
-                        mvn sonar:sonar \
+                        ./mvnw sonar:sonar \
                         -Dsonar.projectKey=ecommerce-microservice-backend \
                         -Dsonar.projectName='Ecommerce Microservice Backend' \
                         -Dsonar.projectVersion=${env.BUILD_NUMBER} \
