@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         // El ID de las credenciales que mencionaste (TEXT credential)
-        SONAR_TOKEN = credentials('sonarqube-token') // Asegúrate que este ID exista en Jenkins
+        SONAR_TOKEN = credentials('SONAR_TOKEN') // Asegúrate que este ID exista en Jenkins
         SONAR_HOST_URL = 'http://localhost:9000'    // Ajusta la URL de tu SonarQube
         JAVA_HOME = '/opt/java/openjdk'
         PATH = "${JAVA_HOME}/bin:${env.PATH}"
