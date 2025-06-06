@@ -1,11 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'carlossg/maven-git-docker' // Imagen con Maven, Git y Docker CLI
-            args '-v /var/run/docker.sock:/var/run/docker.sock -u root'
-            // Jenkins se encargará de que este agente también se conecte a ci-network
-        }
-    }
+    agent any
 
     parameters {
         choice(
