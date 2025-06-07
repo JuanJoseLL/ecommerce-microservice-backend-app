@@ -438,12 +438,12 @@ EOF
                         }
                         
                         // Política por promedio de servicios
-                        def avgCritical = totalCriticalVulns / scannedServices
-                        def avgHigh = totalHighVulns / scannedServices
+                        def avgCritical = totalCriticalVulns.toFloat() / scannedServices
+                        def avgHigh = totalHighVulns.toFloat() / scannedServices
                         
                         echo "📈 Promedio por servicio:"
-                        echo "   - Críticas: ${avgCritical.round(2)}"
-                        echo "   - Altas: ${avgHigh.round(2)}"
+                        echo "   - Críticas: ${String.format('%.2f', avgCritical)}"
+                        echo "   - Altas: ${String.format('%.2f', avgHigh)}"
                         
                         echo "✅ Verificación de políticas completada"
                     } else {
