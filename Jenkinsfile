@@ -505,6 +505,11 @@ EOF
             sh """
                 rm -f trivy-*-report.json trivy-*-summary.txt trivy-metrics.properties || true
             """
+
+            echo 'Limpieza final del pipeline...'
+            
+            
+            cleanWs() 
         }
         
         success {
