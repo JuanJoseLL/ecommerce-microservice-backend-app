@@ -29,6 +29,16 @@ pipeline {
 
         DOCKERHUB_USERNAME = 'j2loop' 
         DOCKERHUB_CREDENTIALS_ID = 'DOCKERHUB_CREDENTIALS' // El ID de la credencial que creaste en Jenkins
+        
+        // Configuración de GitHub
+        GITHUB_TOKEN = credentials('GITHUB_TOKEN') // Añadir token de GitHub en Jenkins
+        
+        // Configuración de notificaciones
+        EMAIL_RECIPIENTS = 'juanjolo1204lo@gmail.com' // Emails para notificaciones
+        
+        // Variables dinámicas (se establecen durante el pipeline)
+        SEMANTIC_VERSION = ''
+        IS_PRODUCTION_DEPLOY = 'false'
     }
 
     stages {
@@ -43,6 +53,65 @@ pipeline {
             steps {
                 echo 'Compilando el proyecto...'
                 sh './mvnw clean compile'
+            }
+        }
+
+        stage('Calculate Semantic Version') {
+            steps {
+                echo 'Calculando versión semántica...'
+                script {
+                    // Obtener último tag de versión
+                    def lastTag = sh(
+                        script: "git describe --tags --abbrev=0 2>/dev/null || echo 'v0.0.0'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "🏷️  Último tag: ${lastTag}"
+                    
+                    // Extraer números de versión (ej: v1.2.3 -> [1, 2, 3])
+                    def versionNumbers = lastTag.replaceAll(/^v/, '').split('\\.')
+                    def major = versionNumbers[0] as Integer
+                    def minor = versionNumbers.size() > 1 ? versionNumbers[1] as Integer : 0
+                    def patch = versionNumbers.size() > 2 ? versionNumbers[2] as Integer : 0
+                    
+                    // Analizar commits desde el último tag para determinar tipo de versión
+                    def commitMessages = sh(
+                        script: "git log ${lastTag}..HEAD --pretty=format:'%s' 2>/dev/null || git log --pretty=format:'%s' -10",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "📝 Analizando commits para versionado semántico..."
+                    
+                    def isMajor = commitMessages.contains('BREAKING CHANGE') || 
+                                 commitMessages.contains('!:') ||
+                                 commitMessages.toLowerCase().contains('breaking')
+                    def isMinor = commitMessages.toLowerCase().contains('feat:') ||
+                                 commitMessages.toLowerCase().contains('feature:')
+                    def isPatch = commitMessages.toLowerCase().contains('fix:') ||
+                                 commitMessages.toLowerCase().contains('bugfix:') ||
+                                 commitMessages.toLowerCase().contains('patch:')
+                    
+                    // Calcular nueva versión
+                    def newVersion
+                    if (isMajor) {
+                        newVersion = "${major + 1}.0.0"
+                        echo "🚨 BREAKING CHANGE detectado - Incrementando versión MAJOR"
+                    } else if (isMinor) {
+                        newVersion = "${major}.${minor + 1}.0"
+                        echo "✨ Nueva funcionalidad detectada - Incrementando versión MINOR"
+                    } else if (isPatch || env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'main') {
+                        newVersion = "${major}.${minor}.${patch + 1}"
+                        echo "🔧 Fix o release detectado - Incrementando versión PATCH"
+                    } else {
+                        // Para branches de desarrollo, usar versión con suffix
+                        def branchSuffix = env.BRANCH_NAME.replaceAll(/[^a-zA-Z0-9]/, '-').toLowerCase()
+                        newVersion = "${major}.${minor}.${patch + 1}-${branchSuffix}.${env.BUILD_NUMBER}"
+                        echo "🔀 Branch de desarrollo - Usando versión con suffix"
+                    }
+                    
+                    env.SEMANTIC_VERSION = newVersion
+                    echo "🎯 Nueva versión semántica: v${newVersion}"
+                }
             }
         }
 
@@ -94,6 +163,12 @@ pipeline {
                     
                     // Guardar lista de servicios para etapas posteriores
                     env.SERVICES_TO_BUILD = servicesToBuild.join(',')
+                    
+                    // Determinar si es despliegue a producción
+                    if (env.BRANCH_NAME == 'master' || env.BRANCH_NAME == 'main') {
+                        env.IS_PRODUCTION_DEPLOY = 'true'
+                        echo "🚀 Despliegue a PRODUCCIÓN detectado"
+                    }
                 }
             }
         }
@@ -152,17 +227,20 @@ pipeline {
                             
                             sh """
                                 cd ${service}
-                                # Construir la imagen con tags locales y de Docker Hub
+                                # Construir la imagen con versionado semántico
                                 docker build -t ${service}:${env.BUILD_NUMBER} .
                                 docker tag ${service}:${env.BUILD_NUMBER} ${service}:latest
+                                docker tag ${service}:${env.BUILD_NUMBER} ${service}:v${env.SEMANTIC_VERSION}
                                 docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}
                                 docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:latest
+                                docker tag ${service}:${env.BUILD_NUMBER} ${DOCKERHUB_USERNAME}/${service}:v${env.SEMANTIC_VERSION}
                             """
                             
                             // Agregar imagen local para escaneo de seguridad
                             localImages.add("${service}:${env.BUILD_NUMBER}")
-                            // Agregar imagen de Docker Hub para push
+                            // Agregar imágenes de Docker Hub para push (con versionado semántico)
                             builtImages.add("${DOCKERHUB_USERNAME}/${service}:${env.BUILD_NUMBER}")
+                            builtImages.add("${DOCKERHUB_USERNAME}/${service}:v${env.SEMANTIC_VERSION}")
                         } else {
                             echo "⚠️  No se encontró Dockerfile en ${service}/"
                         }
@@ -383,7 +461,10 @@ EOF
                                     # Push imagen latest
                                     docker push ${DOCKERHUB_USERNAME}/${service}:latest
                                     
-                                    echo "✅ ${service} publicado exitosamente"
+                                    # Push imagen con versión semántica
+                                    docker push ${DOCKERHUB_USERNAME}/${service}:v${env.SEMANTIC_VERSION}
+                                    
+                                    echo "✅ ${service} publicado exitosamente con versión v${env.SEMANTIC_VERSION}"
                                 """
                             }
                         }
@@ -453,6 +534,129 @@ EOF
             }
         }
         
+        stage('Production Deployment Approval') {
+            when {
+                expression { env.IS_PRODUCTION_DEPLOY == 'true' }
+            }
+            steps {
+                echo '🚨 Solicitando aprobación para despliegue a PRODUCCIÓN...'
+                script {
+                    def servicesToDeploy = env.SERVICES_TO_BUILD.split(',')
+                    def approvalMessage = """
+🚀 APROBACIÓN REQUERIDA: Despliegue a Producción
+
+📋 Detalles del despliegue:
+• Versión: v${env.SEMANTIC_VERSION}
+• Branch: ${env.BRANCH_NAME}
+• Build: ${env.BUILD_NUMBER}
+• Servicios: ${servicesToDeploy.join(', ')}
+
+🛡️ Verificaciones completadas:
+✅ Compilación exitosa
+✅ Análisis de calidad (SonarQube)
+✅ Escaneo de seguridad (Trivy)
+✅ Imágenes Docker construidas
+
+⚠️  Este despliegue afectará el entorno de PRODUCCIÓN.
+¿Desea continuar con el despliegue?
+                    """
+                    
+                    try {
+                        timeout(time: 10, unit: 'MINUTES') {
+                            def userInput = input(
+                                id: 'productionDeployApproval',
+                                message: approvalMessage,
+                                parameters: [
+                                    choice(
+                                        choices: ['Aprobar y continuar', 'Rechazar despliegue'],
+                                        description: 'Seleccione una opción:',
+                                        name: 'APPROVAL_CHOICE'
+                                    )
+                                ],
+                                submitterParameter: 'APPROVER'
+                            )
+                            
+                            if (userInput.APPROVAL_CHOICE == 'Rechazar despliegue') {
+                                error("❌ Despliegue a producción RECHAZADO por ${userInput.APPROVER}")
+                            }
+                            
+                            echo "✅ Despliegue a producción APROBADO por ${userInput.APPROVER}"
+                            env.DEPLOYMENT_APPROVER = userInput.APPROVER
+                            
+                        }
+                    } catch (Exception e) {
+                        echo "⏰ Timeout o rechazo de aprobación: ${e.getMessage()}"
+                        currentBuild.result = 'ABORTED'
+                        error("❌ Despliegue cancelado: No se recibió aprobación a tiempo")
+                    }
+                }
+            }
+        }
+
+        stage('Create GitHub Release') {
+            when {
+                anyOf {
+                    branch 'master'
+                    branch 'main'
+                }
+            }
+            steps {
+                echo 'Creando release en GitHub...'
+                script {
+                    def servicesToBuild = env.SERVICES_TO_BUILD.split(',')
+                    def releaseTag = "v${env.SEMANTIC_VERSION}"
+                    def releaseTitle = "Release ${releaseTag} - ${servicesToBuild.join(', ')}"
+                    def releaseNotes = """
+## 🚀 Release ${releaseTag}
+
+### Microservicios actualizados:
+${servicesToBuild.collect { "- ${it}" }.join('\n')}
+
+### 📦 Imágenes Docker publicadas:
+${servicesToBuild.collect { "- \`${env.DOCKERHUB_USERNAME}/${it}:v${env.SEMANTIC_VERSION}\`" }.join('\n')}
+${servicesToBuild.collect { "- \`${env.DOCKERHUB_USERNAME}/${it}:latest\`" }.join('\n')}
+
+### 📊 Información del build:
+- **Build ID:** ${env.BUILD_NUMBER}
+- **Branch:** ${env.BRANCH_NAME}
+- **Commit:** ${env.GIT_COMMIT?.take(8)}
+- **Fecha:** ${new Date().format('yyyy-MM-dd HH:mm:ss')}
+
+### 🛡️ Seguridad:
+- Análisis de calidad: ✅ SonarQube
+- Escaneo de seguridad: ✅ Trivy
+- Imágenes validadas y publicadas en Docker Hub
+
+---
+*Release generado automáticamente por Jenkins Pipeline*
+                    """
+                    
+                    withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GITHUB_TOKEN')]) {
+                        sh """
+                            # Instalar gh CLI si no existe
+                            if ! command -v gh &> /dev/null; then
+                                echo "📦 Instalando GitHub CLI..."
+                                curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+                                echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+                                sudo apt update && sudo apt install gh -y
+                            fi
+                            
+                            # Configurar autenticación
+                            echo "${GITHUB_TOKEN}" | gh auth login --with-token
+                            
+                            # Crear el release
+                            gh release create "${releaseTag}" \\
+                                --title "${releaseTitle}" \\
+                                --notes "${releaseNotes}" \\
+                                --latest
+                            
+                            echo "✅ Release ${releaseTag} creado exitosamente en GitHub"
+                        """
+                    }
+                }
+            }
+        }
+
         stage('Docker Cleanup') {
             steps {
                 echo 'Limpiando recursos Docker...'
@@ -515,6 +719,50 @@ EOF
         success {
             echo '✅ Pipeline completado exitosamente!'
             script {
+                def servicesToBuild = env.SERVICES_TO_BUILD?.split(',') ?: []
+                def emailSubject = "✅ Pipeline Exitoso - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                def emailBody = """
+<h2>🎉 Pipeline Completado Exitosamente</h2>
+
+<h3>📋 Información del Build:</h3>
+<ul>
+    <li><strong>Job:</strong> ${env.JOB_NAME}</li>
+    <li><strong>Build:</strong> #${env.BUILD_NUMBER}</li>
+    <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+    <li><strong>Versión:</strong> v${env.SEMANTIC_VERSION ?: 'N/A'}</li>
+    <li><strong>Commit:</strong> ${env.GIT_COMMIT?.take(8)}</li>
+    <li><strong>Duración:</strong> ${currentBuild.durationString}</li>
+</ul>
+
+<h3>🚀 Microservicios Procesados:</h3>
+<ul>
+    ${servicesToBuild.collect { "<li>${it}</li>" }.join('')}
+</ul>
+
+<h3>📦 Artefactos Generados:</h3>
+<ul>
+    ${servicesToBuild.collect { "<li>Docker: j2loop/${it}:v${env.SEMANTIC_VERSION ?: 'latest'}</li>" }.join('')}
+</ul>
+
+${env.IS_PRODUCTION_DEPLOY == 'true' ? "<h3>✅ Despliegue a Producción:</h3><p><strong>Aprobado por:</strong> ${env.DEPLOYMENT_APPROVER ?: 'N/A'}</p>" : ''}
+
+<h3>🛡️ Verificaciones de Seguridad:</h3>
+${fileExists('trivy-metrics.properties') ? 
+    readProperties(file: 'trivy-metrics.properties').collect { k, v -> 
+        "<li><strong>${k.replace('_', ' ').toLowerCase().capitalize()}:</strong> ${v}</li>" 
+    }.join('') : '<li>No hay métricas de seguridad disponibles</li>'}
+
+<hr>
+<p><small>Build URL: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></small></p>
+                """
+                
+                emailext (
+                    subject: emailSubject,
+                    body: emailBody,
+                    mimeType: 'text/html',
+                    to: env.EMAIL_RECIPIENTS
+                )
+                
                 // Enviar notificación con métricas de seguridad si existen
                 if (fileExists('trivy-metrics.properties')) {
                     def props = readProperties file: 'trivy-metrics.properties'
@@ -528,10 +776,135 @@ EOF
         
         failure {
             echo '❌ El pipeline falló'
+            script {
+                def servicesToBuild = env.SERVICES_TO_BUILD?.split(',') ?: []
+                def emailSubject = "❌ Pipeline Fallido - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                def emailBody = """
+<h2>🚨 Pipeline Fallido</h2>
+
+<h3>📋 Información del Build:</h3>
+<ul>
+    <li><strong>Job:</strong> ${env.JOB_NAME}</li>
+    <li><strong>Build:</strong> #${env.BUILD_NUMBER}</li>
+    <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+    <li><strong>Versión:</strong> v${env.SEMANTIC_VERSION ?: 'N/A'}</li>
+    <li><strong>Commit:</strong> ${env.GIT_COMMIT?.take(8)}</li>
+    <li><strong>Duración:</strong> ${currentBuild.durationString}</li>
+    <li><strong>Stage Fallido:</strong> ${env.STAGE_NAME ?: 'Desconocido'}</li>
+</ul>
+
+<h3>🚀 Microservicios en Proceso:</h3>
+<ul>
+    ${servicesToBuild.collect { "<li>${it}</li>" }.join('')}
+</ul>
+
+<h3>🔍 Acciones Requeridas:</h3>
+<ul>
+    <li>Revisar los logs del build para identificar el error</li>
+    <li>Verificar configuración de dependencias</li>
+    <li>Validar tests y análisis de calidad</li>
+    <li>Revisar configuración de seguridad</li>
+</ul>
+
+<hr>
+<p><strong>🔗 Enlaces útiles:</strong></p>
+<ul>
+    <li><a href="${env.BUILD_URL}">Ver logs del build</a></li>
+    <li><a href="${env.BUILD_URL}/console">Consola completa</a></li>
+</ul>
+                """
+                
+                emailext (
+                    subject: emailSubject,
+                    body: emailBody,
+                    mimeType: 'text/html',
+                    to: env.EMAIL_RECIPIENTS
+                )
+            }
         }
         
         unstable {
             echo '⚠️  Pipeline completado con advertencias de seguridad'
+            script {
+                def servicesToBuild = env.SERVICES_TO_BUILD?.split(',') ?: []
+                def emailSubject = "⚠️ Pipeline Inestable - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                def emailBody = """
+<h2>⚠️ Pipeline Completado con Advertencias</h2>
+
+<h3>📋 Información del Build:</h3>
+<ul>
+    <li><strong>Job:</strong> ${env.JOB_NAME}</li>
+    <li><strong>Build:</strong> #${env.BUILD_NUMBER}</li>
+    <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+    <li><strong>Versión:</strong> v${env.SEMANTIC_VERSION ?: 'N/A'}</li>
+    <li><strong>Commit:</strong> ${env.GIT_COMMIT?.take(8)}</li>
+    <li><strong>Duración:</strong> ${currentBuild.durationString}</li>
+</ul>
+
+<h3>🚀 Microservicios Procesados:</h3>
+<ul>
+    ${servicesToBuild.collect { "<li>${it}</li>" }.join('')}
+</ul>
+
+<h3>⚠️ Advertencias de Seguridad:</h3>
+${fileExists('trivy-metrics.properties') ? 
+    readProperties(file: 'trivy-metrics.properties').collect { k, v -> 
+        "<li><strong>${k.replace('_', ' ').toLowerCase().capitalize()}:</strong> ${v}</li>" 
+    }.join('') : '<li>No hay métricas de seguridad disponibles</li>'}
+
+<h3>🔧 Acciones Recomendadas:</h3>
+<ul>
+    <li>Revisar y solucionar vulnerabilidades de seguridad detectadas</li>
+    <li>Actualizar dependencias con vulnerabilidades</li>
+    <li>Verificar configuración de seguridad</li>
+</ul>
+
+<hr>
+<p><strong>🔗 Enlaces útiles:</strong></p>
+<ul>
+    <li><a href="${env.BUILD_URL}">Ver detalles del build</a></li>
+    <li><a href="${env.BUILD_URL}/Trivy_Security_Report_(Local)/">Ver reporte de seguridad</a></li>
+</ul>
+                """
+                
+                emailext (
+                    subject: emailSubject,
+                    body: emailBody,
+                    mimeType: 'text/html',
+                    to: env.EMAIL_RECIPIENTS
+                )
+            }
+        }
+        
+        aborted {
+            echo '🛑 Pipeline cancelado/abortado'
+            script {
+                def emailSubject = "🛑 Pipeline Cancelado - ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+                def emailBody = """
+<h2>🛑 Pipeline Cancelado</h2>
+
+<h3>📋 Información del Build:</h3>
+<ul>
+    <li><strong>Job:</strong> ${env.JOB_NAME}</li>
+    <li><strong>Build:</strong> #${env.BUILD_NUMBER}</li>
+    <li><strong>Branch:</strong> ${env.BRANCH_NAME}</li>
+    <li><strong>Duración:</strong> ${currentBuild.durationString}</li>
+    <li><strong>Razón:</strong> ${env.IS_PRODUCTION_DEPLOY == 'true' ? 'Aprobación de producción rechazada o timeout' : 'Cancelado manualmente'}</li>
+</ul>
+
+${env.IS_PRODUCTION_DEPLOY == 'true' ? '<p><strong>⚠️ Nota:</strong> El despliegue a producción fue rechazado o no se recibió aprobación a tiempo.</p>' : ''}
+
+<hr>
+<p><a href="${env.BUILD_URL}">Ver detalles del build</a></p>
+                """
+                
+                emailext (
+                    subject: emailSubject,
+                    body: emailBody,
+                    mimeType: 'text/html',
+                    to: env.EMAIL_RECIPIENTS
+                )
+            }
         }
     }
 }
