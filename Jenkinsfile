@@ -200,11 +200,30 @@ pipeline {
     post {
         always {
             script {
-                notificationStages.sendBuildNotification(
-                    currentBuild.result ?: 'SUCCESS',
-                    env.EMAIL_RECIPIENTS,
-                    env.SERVICES_TO_BUILD,
-                    env.SEMANTIC_VERSION
+                def buildResult = currentBuild.result ?: 'SUCCESS'
+                def servicesToBuild = env.SERVICES_TO_BUILD ?: 'N/A'
+                def semanticVersion = env.SEMANTIC_VERSION ?: 'N/A'
+                
+                echo "📋 Build Summary:"
+                echo "   📊 Status: ${buildResult}"
+                echo "   🔧 Services: ${servicesToBuild}"
+                echo "   🏷️ Version: ${semanticVersion}"
+                echo "   📧 Notifications would be sent to: ${env.EMAIL_RECIPIENTS}"
+                
+                // Simple email notification using basic Jenkins step
+                emailext (
+                    subject: "[${buildResult}] ${env.APP_NAME} - Build #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2>Build ${buildResult}</h2>
+                        <p><strong>Project:</strong> ${env.APP_NAME}</p>
+                        <p><strong>Build Number:</strong> ${env.BUILD_NUMBER}</p>
+                        <p><strong>Branch:</strong> ${env.BRANCH_NAME}</p>
+                        <p><strong>Services Built:</strong> ${servicesToBuild}</p>
+                        <p><strong>Version:</strong> ${semanticVersion}</p>
+                        <p><strong>Build URL:</strong> <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                    """,
+                    to: env.EMAIL_RECIPIENTS,
+                    mimeType: 'text/html'
                 )
             }
         }
