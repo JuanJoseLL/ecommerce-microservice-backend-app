@@ -56,7 +56,9 @@ pipeline {
         
         stage('Compile') {
             steps {
-                buildStages.compileProject()
+                script {
+                    buildStages.compileProject()
+                }
             }
         }
         
@@ -137,7 +139,9 @@ pipeline {
         
         stage('Quality Gate') {
             steps {
-                securityStages.waitForQualityGate()
+                script {
+                    securityStages.waitForQualityGate()
+                }
             }
         }
         
@@ -146,7 +150,9 @@ pipeline {
                 expression { !params.SKIP_SECURITY_SCAN }
             }
             steps {
-                securityStages.checkSecurityPolicy()
+                script {
+                    securityStages.checkSecurityPolicy()
+                }
             }
         }
         
